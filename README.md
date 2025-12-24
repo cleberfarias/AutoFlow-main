@@ -4,8 +4,6 @@
 
 Plataforma visual para criar, organizar e simular automacoes de atendimento e vendas para PMEs, com geracao de fluxos por IA e edicao visual por blocos.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1ojo5enW6FJHLycGiMXuW8WfIwOcnzJ1C
-
 ## Para que serve o projeto
 
 Criar fluxos de atendimento e vendas de forma rapida, visual e testavel, reduzindo tempo de operacao e padronizando processos para pequenas e medias empresas.
