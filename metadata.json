@@ -1,0 +1,7 @@
+{
+  "name": "AutoFlow AI - Automações em Linguagem Natural",
+  "description": "Um construtor de automação poderoso que transforma instruções em linguagem natural em fluxos visuais funcionais usando Gemini AI.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
