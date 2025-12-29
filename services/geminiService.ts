@@ -47,12 +47,25 @@ Responda SOMENTE com JSON no formato { "steps": [...] }.`
     const content = response.choices[0]?.message?.content || "";
     const parsed = parseJson<{ steps?: WorkflowStep[] } | WorkflowStep[]>(content);
     const steps = Array.isArray(parsed) ? parsed : parsed?.steps || [];
-    return steps.map((s: any) => ({
-      ...s,
-      type: Object.values(StepType).includes(s.type) ? s.type : StepType.ACTION,
-      params: s.params || { inputs: [], outputs: [] },
-      nextSteps: s.nextSteps || []
-    }));
+    const TYPE_LABELS: Record<string, string> = {
+      TRIGGER: 'Gatilho',
+      ACTION: 'Ação',
+      DATA: 'Dados',
+      LOGIC: 'Lógica',
+      ERROR_HANDLER: 'Erro'
+    };
+
+    return steps.map((s: any) => {
+      const type = Object.values(StepType).includes(s.type) ? s.type : StepType.ACTION;
+      return {
+        ...s,
+        type,
+        title: s.title || `${TYPE_LABELS[type] || type}`,
+        description: s.description || '',
+        params: s.params || { inputs: [], outputs: [] },
+        nextSteps: s.nextSteps || []
+      } as WorkflowStep;
+    });
   } catch (error) {
     console.error("Erro na geração do workflow:", error);
     return [];

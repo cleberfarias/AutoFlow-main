@@ -23,6 +23,7 @@ Cleber Delgado
 - Edicao visual dos nos com drag and drop, zoom, pan e ajuste de enquadramento.
 - Editor de configuracao de cada no (titulo, descricao e parametros).
 - Simulador de runtime com chat e destaque do passo ativo.
+- Modo Preview e exportação de fluxo (PNG) para apresentações.
 - Captura de voz para transcricao e disparo de prompts.
 - Persistencia local via LocalStorage.
 
@@ -53,3 +54,13 @@ Cleber Delgado
 2. Set the `VITE_OPENAI_API_KEY` in [.env.local](.env.local) to your OpenAI API key
 3. Run the app:
    `npm run dev`
+4. (Opcional) Execute os testes:
+   `npm test`
+
+## Connectors (POC)
+
+- Há um conector POC para WhatsApp via WhatsApp Web em `connectors/whatsapp` com endpoints para enviar mensagens e endpoints POC de `find-availability` / `create-appointment`.
+- Para rodar o conector:
+  `npm run whatsapp:start`
+
+**Atenção:** use apenas para POC com número de teste — para produção, prefira integrações oficiais (Twilio / WhatsApp Cloud API).

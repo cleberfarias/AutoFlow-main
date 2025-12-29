@@ -3,6 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Terminal, Globe, Activity, TerminalSquare, AlertCircle, Cpu, ChevronRight, Hash, Mic, MicOff } from 'lucide-react';
 import { WorkflowStep, StepType } from '../types';
 import { getOpenAI } from '../services/openaiClient';
+import { findNextAvailableSlot, findConflictingAppointments } from '../services/availability';
+import { findAvailabilityAction, createAppointmentAction } from '../services/simulatorActions';
+import type { Appointment, AvailabilityWindow, Service, Professional } from '../types';
+import { AppointmentStatus } from '../types';
 
 interface TestChatProps {
   steps: WorkflowStep[];
@@ -28,6 +32,11 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [variables, setVariables] = useState<Record<string, any>>({});
+  const [appointmentsList, setAppointmentsList] = useState<Appointment[]>([]);
+  const [availabilityList, setAvailabilityList] = useState<AvailabilityWindow[]>([]);
+  const [servicesList, setServicesList] = useState<Service[]>([]);
+  const [professionalsList, setProfessionalsList] = useState<Professional[]>([]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -50,7 +59,25 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
     if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  const [selectedProfessional, setSelectedProfessional] = useState<string | undefined>(undefined);
+  const [selectedService, setSelectedService] = useState<string | undefined>(undefined);
+
   useEffect(() => {
+    // seed some demo data for POC
+    setProfessionalsList([
+      { id: 'p1', name: 'Maria', services: ['s1'], locationId: 'l1', availability: [] },
+      { id: 'p2', name: 'João', services: ['s1'], locationId: 'l1', availability: [] }
+    ]);
+
+    setServicesList([
+      { id: 's1', title: 'Limpeza de Pele', durationMinutes: 60, locationId: 'l1' }
+    ]);
+
+    setAvailabilityList([
+      { professionalId: 'p1', start: '2025-12-26T09:00:00.000Z', end: '2025-12-26T17:00:00.000Z' },
+      { professionalId: 'p2', start: '2025-12-26T09:00:00.000Z', end: '2025-12-26T12:00:00.000Z' }
+    ]);
+
     startSimulation();
   }, []);
 
@@ -102,6 +129,8 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
     }
   };
 
+
+
   const startSimulation = async () => {
     setIsTyping(true);
     const trigger = steps.find(s => s.type === StepType.TRIGGER) || steps[0];
@@ -139,6 +168,32 @@ REGRAS DE OURO:
 
       const raw = response.choices[0]?.message?.content || "{}";
       const data = parseJson(raw) || {};
+
+      // Se o assistant solicitou uma ação (DATA/ACTION), execute localmente como POC
+      if (data.actionName) {
+        if (data.actionName === 'findAvailability') {
+          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, data.actionPayload || {});
+          if (res) {
+            data.newVariables = { ...(data.newVariables || {}), suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd };
+            data.actionDescription = `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}`;
+          } else {
+            data.actionDescription = 'Nenhuma janela disponível encontrada';
+          }
+        }
+
+        if (data.actionName === 'createAppointment') {
+          const payload = data.actionPayload || {};
+          if (payload.start && payload.end) {
+            const appt = createAppointmentAction(appointmentsList, payload);
+            setAppointmentsList(prev => [...prev, appt]);
+            data.newVariables = { ...(data.newVariables || {}), lastAppointmentId: appt.id, lastAppointmentStart: appt.start };
+            data.actionDescription = `Agendamento criado ${appt.id} ${appt.start}`;
+          } else {
+            data.actionDescription = 'Payload incompleto para createAppointment';
+          }
+        }
+      }
+
       setVariables(prev => ({ ...prev, ...(data.newVariables || {}) }));
       setMessages([{ 
         role: 'assistant', 
@@ -188,6 +243,32 @@ Responda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","ac
       const raw = response.choices[0]?.message?.content || "{}";
       const data = parseJson(raw) || {};
       if (data.stepId) onStepActive(data.stepId);
+
+      // se veio uma ação, execute localmente como POC
+      if (data.actionName) {
+        if (data.actionName === 'findAvailability') {
+          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, data.actionPayload || {});
+          if (res) {
+            data.newVariables = { ...(data.newVariables || {}), suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd };
+            data.actionDescription = `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}`;
+          } else {
+            data.actionDescription = 'Nenhuma janela disponível encontrada';
+          }
+        }
+
+        if (data.actionName === 'createAppointment') {
+          const payload = data.actionPayload || {};
+          if (payload.start && payload.end) {
+            const appt = createAppointmentAction(appointmentsList, payload);
+            setAppointmentsList(prev => [...prev, appt]);
+            data.newVariables = { ...(data.newVariables || {}), lastAppointmentId: appt.id, lastAppointmentStart: appt.start };
+            data.actionDescription = `Agendamento criado ${appt.id} ${appt.start}`;
+          } else {
+            data.actionDescription = 'Payload incompleto para createAppointment';
+          }
+        }
+      }
+
       if (data.newVariables) setVariables(prev => ({ ...prev, ...data.newVariables }));
       
       setMessages(prev => [...prev, { 
@@ -230,6 +311,45 @@ Responda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","ac
              <Activity size={10} /> Aguardando captura de dados...
            </div>
          )}
+      </div>
+
+      {/* Quick POC controls for availability / appointment */}
+      <div className="p-4 bg-white border-b border-slate-100 flex items-center gap-3">
+        <select value={selectedProfessional} onChange={(e) => setSelectedProfessional(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
+          <option value="">Selecionar profissional</option>
+          {professionalsList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+
+        <select value={selectedService} onChange={(e) => setSelectedService(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
+          <option value="">Selecionar serviço</option>
+          {servicesList.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+        </select>
+
+        <button onClick={() => {
+          const payload = { professionalId: selectedProfessional, serviceId: selectedService, fromISO: new Date().toISOString() };
+          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, payload);
+          if (res) {
+            setVariables(prev => ({ ...prev, suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd }));
+            setMessages(prev => [...prev, { role: 'assistant', content: `Sugestão encontrada: ${res.suggestedStart} → ${res.suggestedEnd}`, techLog: { action: 'findAvailability', description: `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}` } }]);
+          } else {
+            setMessages(prev => [...prev, { role: 'assistant', content: `Nenhuma janela disponível.`, techLog: { action: 'findAvailability', description: 'Nenhuma janela disponível encontrada' } }]);
+          }
+        }} className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Encontrar vaga</button>
+
+        <button onClick={() => {
+          const start = variables.suggestedStart;
+          const end = variables.suggestedEnd;
+          if (!start || !end) {
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Não há vaga sugerida para criar agendamento.', techLog: { action: 'createAppointment', description: 'sem sugestão' } }]);
+            return;
+          }
+          const payload = { professionalId: selectedProfessional, serviceId: selectedService, start, end } as any;
+          const appt = createAppointmentAction(appointmentsList, payload);
+          setAppointmentsList(prev => [...prev, appt]);
+          setVariables(prev => ({ ...prev, lastAppointmentId: appt.id, lastAppointmentStart: appt.start }));
+          setMessages(prev => [...prev, { role: 'assistant', content: `Agendamento criado: ${appt.id} ${appt.start}`, techLog: { action: 'createAppointment', description: `Agendamento criado ${appt.id} ${appt.start}` } }]);
+        }} className="px-3 py-2 bg-emerald-600 text-white rounded-md text-sm">Criar agendamento</button>
+
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50">

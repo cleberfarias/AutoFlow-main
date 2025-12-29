@@ -3,13 +3,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Wand2, Play, Sparkles, ZoomIn, ZoomOut, RotateCcw, Zap, Trash2, 
   Save, History, Mic, MicOff, Users, Plus, Search, ChevronRight, 
-  LogOut, Clock, Edit3, FolderOpen, Pencil, ArrowLeft
+  LogOut, Clock, Edit3, FolderOpen, Pencil, ArrowLeft, Eye, Download, EyeOff
 } from 'lucide-react';
+// NOTE: html-to-image is imported dynamically where needed to avoid build-time errors when not installed.
 import { WorkflowStep, StepType, Client, Workflow } from './types';
 import NodeCard from './components/NodeCard';
 import EditorModal from './components/EditorModal';
 import TestChat from './components/TestChat';
 import NameModal from './components/NameModal';
+import LegendPanel from './components/LegendPanel';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 import { getOpenAI } from './services/openaiClient';
 
@@ -44,8 +46,15 @@ const App: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [viewTransform, setViewTransform] = useState({ x: 80, y: 80, scale: 0.75 });
+  const [isPreview, setIsPreview] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isGroupingMode, setIsGroupingMode] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<{x:number;y:number;width:number;height:number}|null>(null);
+  const groupingRef = useRef<{startX:number,startY:number,active:boolean}|null>(null);
+  const GRID_SIZE = 20;
+  const [isLegendOpen, setIsLegendOpen] = useState(false);
   
   const lastMousePos = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -69,22 +78,50 @@ const App: React.FC = () => {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const isMiddleClick = e.button === 1;
+
+    // Grouping mode: start selection rect in canvas coords
+    if (isGroupingMode) {
+      e.preventDefault();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const sx = (e.clientX - rect.left - viewTransform.x) / viewTransform.scale;
+      const sy = (e.clientY - rect.top - viewTransform.y) / viewTransform.scale;
+      groupingRef.current = { startX: sx, startY: sy, active: true };
+      setSelectionRect({ x: sx, y: sy, width: 0, height: 0 });
+      return;
+    }
+
     if (!isSpacePressed && !isMiddleClick && (e.target as HTMLElement).closest('.NodeCard')) return;
     if (isSpacePressed) e.preventDefault();
     setIsPanning(true);
     lastMousePos.current = { x: e.clientX, y: e.clientY };
+
+    // Try to capture the pointer to avoid lost events when moving fast
+    try { (e.target as HTMLElement).setPointerCapture?.((e as any).pointerId); } catch {}
   };
 
   useEffect(() => {
     if (!isPanning) return;
 
+    // Batching updates with requestAnimationFrame to avoid many React state updates
+    const pending = { dx: 0, dy: 0, ticking: false } as { dx: number; dy: number; ticking: boolean };
+    const PAN_MULTIPLIER = 1.25; // small speed multiplier for snappier panning
+
     const handleMove = (e: PointerEvent) => {
-      setViewTransform(prev => ({
-        ...prev,
-        x: prev.x + (e.clientX - lastMousePos.current.x),
-        y: prev.y + (e.clientY - lastMousePos.current.y)
-      }));
+      const dx = (e.clientX - lastMousePos.current.x) * PAN_MULTIPLIER;
+      const dy = (e.clientY - lastMousePos.current.y) * PAN_MULTIPLIER;
       lastMousePos.current = { x: e.clientX, y: e.clientY };
+
+      pending.dx += dx;
+      pending.dy += dy;
+
+      if (!pending.ticking) {
+        pending.ticking = true;
+        requestAnimationFrame(() => {
+          setViewTransform(prev => ({ ...prev, x: prev.x + pending.dx, y: prev.y + pending.dy }));
+          pending.dx = 0; pending.dy = 0; pending.ticking = false;
+        });
+      }
     };
 
     const stop = () => setIsPanning(false);
@@ -98,6 +135,63 @@ const App: React.FC = () => {
       window.removeEventListener('pointercancel', stop);
     };
   }, [isPanning]);
+
+  // Grouping handlers: update selection rect while grouping
+  useEffect(() => {
+    const handleMove = (e: PointerEvent) => {
+      if (!groupingRef.current || !groupingRef.current.active) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const sx = (e.clientX - rect.left - viewTransform.x) / viewTransform.scale;
+      const sy = (e.clientY - rect.top - viewTransform.y) / viewTransform.scale;
+      const start = groupingRef.current.startX !== undefined ? groupingRef.current.startX : 0;
+      const startY = groupingRef.current.startY !== undefined ? groupingRef.current.startY : 0;
+      const x = Math.min(start, sx);
+      const y = Math.min(startY, sy);
+      const w = Math.abs(sx - start);
+      const h = Math.abs(sy - startY);
+      setSelectionRect({ x, y, width: w, height: h });
+    };
+
+    const handleUp = (e: PointerEvent) => {
+      if (!groupingRef.current || !groupingRef.current.active) return;
+      groupingRef.current.active = false;
+      // finalize: compute selected steps and create group
+      if (!selectionRect || !activeWorkflow) {
+        setSelectionRect(null);
+        return;
+      }
+      const padding = 20;
+      const selected = activeWorkflow.steps.filter(s => {
+        const sx = s.position.x;
+        const sy = s.position.y;
+        return sx >= selectionRect.x && sx <= selectionRect.x + selectionRect.width && sy >= selectionRect.y && sy <= selectionRect.y + selectionRect.height;
+      }).map(s => s.id);
+      if (selected.length > 0) {
+        const nodes = activeWorkflow.steps.filter(s => selected.includes(s.id));
+        const minX = Math.min(...nodes.map(n => n.position.x));
+        const minY = Math.min(...nodes.map(n => n.position.y));
+        const maxX = Math.max(...nodes.map(n => n.position.x)) + 360; // width assumed
+        const maxY = Math.max(...nodes.map(n => n.position.y)) + 240; // height assumed
+        const group = { id: `g_${Date.now()}`, name: `Grupo ${ (activeWorkflow.groups?.length || 0) + 1 }`, color: '#fef3c7', x: minX - padding, y: minY - padding, width: (maxX - minX) + padding * 2, height: (maxY - minY) + padding * 2, stepIds: selected };
+        const updatedGroups = [...(activeWorkflow.groups || []), group];
+        const updated = { ...activeWorkflow, groups: updatedGroups };
+        setActiveWorkflow(updated);
+        // persist groups
+        const updatedClients = clients.map(c => c.id === activeClient?.id ? { ...c, automations: c.automations?.map(a => a.id === activeWorkflow.id ? updated : a) } : c);
+        saveToDB(updatedClients);
+      }
+
+      setSelectionRect(null);
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [selectionRect, isGroupingMode, activeWorkflow, clients, activeClient]);
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -150,7 +244,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedData = localStorage.getItem('autoflow_db');
     if (savedData) {
-      setClients(JSON.parse(savedData));
+      try {
+        const parsed = JSON.parse(savedData) as Client[];
+        // migration: ensure steps have title/description
+        const normalized = parsed.map(c => ({
+          ...c,
+          automations: c.automations?.map(a => ({
+            ...a,
+            steps: a.steps?.map(s => ({
+              ...s,
+              title: s.title || s.type || 'Sem título',
+              description: s.description || ''
+            })) || []
+          })) || []
+        }));
+        setClients(normalized);
+        // persist normalized data
+        localStorage.setItem('autoflow_db', JSON.stringify(normalized));
+      } catch (e) {
+        setClients([]);
+      }
     } else {
       const demoClients: Client[] = [
         { id: '1', name: 'Padaria Sabor Real', email: 'contato@saborreal.com.br', automations: [] },
@@ -251,6 +364,16 @@ const App: React.FC = () => {
     saveToDB(updatedClients);
     setActiveWorkflow(updatedWorkflow);
     setActiveClient(updatedClient);
+  };
+
+  const snapToGrid = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
+
+  const moveStep = (id: string, rawX: number, rawY: number) => {
+    if (!activeWorkflow) return;
+    const x = snapToGrid(rawX);
+    const y = snapToGrid(rawY);
+    const updated = activeWorkflow.steps.map(s => s.id === id ? { ...s, position: { x, y } } : s);
+    saveCurrentWorkflow(updated);
   };
 
   const deleteWorkflow = (id: string) => {
@@ -442,24 +565,91 @@ const App: React.FC = () => {
         <div className="absolute inset-0 dotted-bg opacity-20" style={{ transform: `translate(${viewTransform.x}px, ${viewTransform.y}px) scale(${viewTransform.scale})`, transformOrigin: '0 0' }} />
         <div className="absolute inset-0" style={{ transform: `translate(${viewTransform.x}px, ${viewTransform.y}px) scale(${viewTransform.scale})`, transformOrigin: '0 0' }}>
           <svg className="absolute inset-0 pointer-events-none w-[5000px] h-[5000px]">
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L8,4 L0,8 z" fill="#3b82f6" />
+              </marker>
+              <marker id="arrow-black" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L8,4 L0,8 z" fill="#374151" />
+              </marker>
+            </defs>
+
+            {activeWorkflow.groups?.map(g => (
+              <g key={g.id}>
+                <rect x={g.x} y={g.y} width={g.width} height={g.height} rx={16} ry={16} fill={g.color || '#ffffff'} stroke={g.color ? '#f59e0b' : '#e6e6e6'} strokeWidth={2} opacity={0.25} />
+                <text x={g.x + 12} y={g.y + 22} className="text-[12px] font-bold text-slate-700">{g.name}</text>
+              </g>
+            ))}
+
             {activeWorkflow.steps.map((step) => {
               const nextSteps = Array.isArray(step.nextSteps) ? step.nextSteps : [];
+              const NODE_WIDTH = isPreview ? 260 : 360;
+              const NODE_HEIGHT = isPreview ? 180 : 240;
+
               return nextSteps.map(nextId => {
-              const target = activeWorkflow.steps.find(s => s.id === nextId);
-              if (!target) return null;
-              const startX = step.position.x + 360, startY = step.position.y + 115, endX = target.position.x, endY = target.position.y + 115;
-              const isActive = activeStepId === step.id || activeStepId === target.id;
-              return <path key={`${step.id}-${target.id}`} d={`M ${startX} ${startY} C ${startX + 100} ${startY}, ${endX - 100} ${endY}, ${endX} ${endY}`} stroke={isActive ? "#3b82f6" : "#cbd5e1"} strokeWidth={isActive ? "3" : "2"} fill="none" className={isActive ? 'flow-line-active' : ''} />;
-            });
+                const target = activeWorkflow.steps.find(s => s.id === nextId);
+                if (!target) return null;
+
+                const startX = step.position.x + NODE_WIDTH; // right edge
+                const startY = step.position.y + NODE_HEIGHT / 2;
+                const endX = target.position.x; // left edge
+                const endY = target.position.y + NODE_HEIGHT / 2;
+                const dx = Math.max(80, Math.abs(endX - startX) / 2);
+
+                const p0 = { x: startX, y: startY };
+                const p1 = { x: startX + dx, y: startY };
+                const p2 = { x: endX - dx, y: endY };
+                const p3 = { x: endX, y: endY };
+
+                // midpoint on cubic bezier t=0.5
+                const t = 0.5;
+                const cx = Math.pow(1 - t, 3) * p0.x + 3 * Math.pow(1 - t, 2) * t * p1.x + 3 * (1 - t) * Math.pow(t, 2) * p2.x + Math.pow(t, 3) * p3.x;
+                const cy = Math.pow(1 - t, 3) * p0.y + 3 * Math.pow(1 - t, 2) * t * p1.y + 3 * (1 - t) * Math.pow(t, 2) * p2.y + Math.pow(t, 3) * p3.y;
+
+                const srcType = step.type as StepType;
+                const styles: Record<string, any> = {
+                  TRIGGER: { color: '#10b981', dash: '' },
+                  ACTION: { color: '#3b82f6', dash: '' },
+                  DATA: { color: '#6366f1', dash: '' },
+                  LOGIC: { color: '#f59e0b', dash: '4 6' },
+                  ERROR_HANDLER: { color: '#fb7185', dash: '4 6' }
+                };
+
+                const s = styles[srcType] || styles.ACTION;
+                const isActive = activeStepId === step.id || activeStepId === target.id;
+
+                const d = `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
+
+                const label = (step.params && step.params.label) || 'Entrada → Saída';
+                const labelWidth = Math.max(80, Math.min(220, String(label).length * 7));
+
+                return (
+                  <g key={`${step.id}-${target.id}`}> 
+                    <path d={d} stroke={isActive ? '#3b82f6' : s.color} strokeWidth={isActive ? 3 : 2} fill="none" strokeDasharray={s.dash} markerEnd={`url(#arrow)`} />
+                    {/* end circle */}
+                    <circle cx={p3.x} cy={p3.y} r={5} fill={s.color} />
+                    {/* label background */}
+                    <rect x={cx - labelWidth / 2} y={cy - 14} rx={8} ry={8} width={labelWidth} height={20} fill="rgba(255,255,255,0.9)" stroke="rgba(0,0,0,0.05)" />
+                    <text x={cx} y={cy} textAnchor="middle" alignmentBaseline="middle" className="text-[11px] font-bold" fill="#374151">{label}</text>
+                  </g>
+                );
+
+              });
             })}
           </svg>
+          {/* Selection rect (grouping) - rendered between svg and nodes */}
+          {selectionRect && (
+            <div style={{ position: 'absolute', left: selectionRect.x, top: selectionRect.y, width: selectionRect.width, height: selectionRect.height, border: '2px dashed rgba(245,158,11,0.8)', background: 'rgba(245,158,11,0.06)', borderRadius: 10, pointerEvents: 'none' }} />
+          )}
+
           {activeWorkflow.steps.map((step) => (
             <NodeCard
               key={step.id}
               step={step}
               isActive={activeStepId === step.id}
               isPanningMode={isSpacePressed || isPanning}
-              onMove={(id, x, y) => saveCurrentWorkflow(activeWorkflow.steps.map(s => s.id === id ? {...s, position: {x, y}} : s))}
+              isPreview={isPreview}
+              onMove={(id, x, y) => moveStep(id, x, y)}
               onDelete={(id) => saveCurrentWorkflow(activeWorkflow.steps.filter(x => x.id !== id))}
               onEdit={setEditingStepId}
             />
@@ -488,7 +678,7 @@ const App: React.FC = () => {
           </div>
         )}
         <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-xl border border-white rounded-2xl px-4 py-3 shadow-xl text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Dicas: segure <span className="text-slate-700">Space</span> para mover • role para zoom
+          {isGroupingMode ? (<span>Modo de Agrupamento: arraste para selecionar nós • clique novamente para cancelar</span>) : (<span>Dicas: segure <span className="text-slate-700">Space</span> para mover • role para zoom</span>)}
         </div>
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur-xl px-8 py-4 rounded-3xl shadow-2xl border border-white z-40">
            <button onClick={() => setIsTesting(true)} disabled={activeWorkflow.steps.length === 0} className="px-8 py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:bg-black transition-all disabled:opacity-30"><Play size={16} fill="currentColor" /> Simular Fluxo</button>
@@ -496,6 +686,30 @@ const App: React.FC = () => {
              <button onClick={() => setViewTransform(p => ({...p, scale: Math.min(p.scale + 0.1, 1.5)}))} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><ZoomIn size={20}/></button>
              <button onClick={() => setViewTransform(p => ({...p, scale: Math.max(p.scale - 0.1, 0.3)}))} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><ZoomOut size={20}/></button>
              <button onClick={fitToWorkflow} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><RotateCcw size={20}/></button>
+             <button onClick={() => { setIsPreview(p => !p); if (!isPreview) { fitToWorkflow(); } }} title={isPreview ? 'Sair do preview' : 'Entrar em modo de apresentação'} className={`p-3 rounded-xl transition-colors ${isPreview ? 'bg-blue-600 text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-blue-600'}`}>
+               {isPreview ? <><EyeOff size={18} /> </> : <><Eye size={18} /> </> }
+             </button>
+             <button onClick={() => setIsGroupingMode(g => !g)} title={isGroupingMode ? 'Cancelar agrupamento' : 'Agrupar nós (arraste)'} className={`p-3 rounded-xl transition-colors ${isGroupingMode ? 'bg-amber-400 text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-amber-500'}`}>
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+             </button>
+             <button onClick={async () => {
+               // export canvas as PNG (dynamic import to avoid Vite resolution errors if package missing)
+               if (!canvasRef.current) return;
+               try {
+                 const node = canvasRef.current as HTMLElement;
+                 const htmlToImage = await import(/* @vite-ignore */ 'html-to-image');
+                 const _toPng = (htmlToImage && (htmlToImage.toPng || htmlToImage.default?.toPng));
+                 if (!_toPng) throw new Error('html-to-image não disponibiliza toPng');
+                 const dataUrl = await _toPng(node, { cacheBust: true, backgroundColor: '#ffffff' });
+                 const link = document.createElement('a');
+                 link.download = `${activeWorkflow.name.replace(/\s+/g,'_') || 'autoflow'}_flow.png`;
+                 link.href = dataUrl;
+                 link.click();
+               } catch (err) {
+                 console.error('Export error', err);
+                 alert('Erro ao exportar imagem. Verifique se a dependência "html-to-image" está instalada (execute `npm install html-to-image`).');
+               }
+             }} title="Exportar screenshot" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><Download size={20} /></button>
            </div>
         </div>
       </main>
