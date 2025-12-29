@@ -1,12 +1,8 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+
 
 # AutoFlow AI - Enterprise Edition
 
 Plataforma visual para criar, organizar e simular automacoes de atendimento e vendas para PMEs, com geracao de fluxos por IA e edicao visual por blocos.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1ojo5enW6FJHLycGiMXuW8WfIwOcnzJ1C
 
 ## Para que serve o projeto
 
