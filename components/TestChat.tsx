@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Terminal, Globe, Activity, TerminalSquare, AlertCircle, Cpu, ChevronRight, Hash, Mic, MicOff } from 'lucide-react';
 import { WorkflowStep, StepType } from '../types';
-import { getOpenAI } from '../services/openaiClient';
+// OpenAI usage removed from browser. Backend endpoints (/api/autoflow/simulate, /api/autoflow/transcribe) should be used instead.
 import { findNextAvailableSlot, findConflictingAppointments } from '../services/availability';
 import { findAvailabilityAction, createAppointmentAction } from '../services/simulatorActions';
 import type { Appointment, AvailabilityWindow, Service, Professional } from '../types';
@@ -111,22 +111,26 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
   };
 
   const transcribeAudio = async (audioBlob: Blob) => {
-    const openai = getOpenAI();
     try {
-      const audioFile = new File([audioBlob], 'gravacao.webm', { type: 'audio/webm' });
-      const response = await openai.audio.transcriptions.create({
-        file: audioFile,
-        model: 'whisper-1'
-      });
-      const transcription = response.text;
-      if (transcription) {
-        setInput(transcription);
-        // Automaticaly trigger send if it's clear
-        handleSend(transcription);
+      // prefer server-side transcription
+      const fd = new FormData();
+      fd.append('file', audioBlob, 'audio.webm');
+      const res = await fetch('/api/autoflow/transcribe', { method: 'POST', body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        const transcription = data?.text;
+        if (transcription) {
+          setInput(transcription);
+          handleSend(transcription);
+        }
+        return;
       }
     } catch (err) {
-      console.error("Erro na transcrição:", err);
+      console.warn('/api/autoflow/transcribe not available', err);
     }
+    // fallback
+    setInput('');
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Transcrição não disponível no navegador.' }]);
   };
 
 
@@ -134,7 +138,7 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
   const startSimulation = async () => {
     setIsTyping(true);
     const trigger = steps.find(s => s.type === StepType.TRIGGER) || steps[0];
-    
+
     if (!trigger) {
       setError("Crie alguns blocos primeiro!");
       setIsTyping(false);
@@ -143,144 +147,98 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
 
     onStepActive(trigger.id);
 
-    const openai = getOpenAI();
+    // Try server-side simulator
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: 'system',
-            content: `Você é o motor de execução AutoFlow. Seu objetivo é SIMULAR uma conversa real entre a automação e o cliente final.
-
-FLUXO ATUAL: ${JSON.stringify(steps)}
-PASSO INICIAL: "${trigger.title}"
-
-REGRAS DE OURO:
-1. Fale como se fosse o bot/automação configurada.
-2. Se o nó atual for um TRIGGER que espera mensagem, diga "Olá" e pergunte o que o usuário deseja.
-3. Se for um nó de DATA, simule que salvou a informação e conte ao usuário.
-4. Retorne SEMPRE um JSON válido no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`
-          },
-          { role: 'user', content: 'Inicie a simulação.' }
-        ]
+      const res = await fetch('/api/autoflow/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'start', steps, triggerId: trigger.id })
       });
-
-      const raw = response.choices[0]?.message?.content || "{}";
-      const data = parseJson(raw) || {};
-
-      // Se o assistant solicitou uma ação (DATA/ACTION), execute localmente como POC
-      if (data.actionName) {
-        if (data.actionName === 'findAvailability') {
-          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, data.actionPayload || {});
-          if (res) {
-            data.newVariables = { ...(data.newVariables || {}), suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd };
-            data.actionDescription = `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}`;
-          } else {
-            data.actionDescription = 'Nenhuma janela disponível encontrada';
-          }
+      if (res.ok) {
+        const data = await res.json();
+        const raw = data?.raw || '{}';
+        const parsed = parseJson(raw) || data || {};
+        // apply potential action emulation locally (same as previous behavior)
+        if (parsed.actionName === 'findAvailability') {
+          const r = findAvailabilityAction(availabilityList, appointmentsList, servicesList, parsed.actionPayload || {});
+          if (r) parsed.newVariables = { ...(parsed.newVariables || {}), suggestedStart: r.suggestedStart, suggestedEnd: r.suggestedEnd };
         }
-
-        if (data.actionName === 'createAppointment') {
-          const payload = data.actionPayload || {};
-          if (payload.start && payload.end) {
-            const appt = createAppointmentAction(appointmentsList, payload);
+        if (parsed.actionName === 'createAppointment') {
+          const p = parsed.actionPayload || {};
+          if (p.start && p.end) {
+            const appt = createAppointmentAction(appointmentsList, p);
             setAppointmentsList(prev => [...prev, appt]);
-            data.newVariables = { ...(data.newVariables || {}), lastAppointmentId: appt.id, lastAppointmentStart: appt.start };
-            data.actionDescription = `Agendamento criado ${appt.id} ${appt.start}`;
-          } else {
-            data.actionDescription = 'Payload incompleto para createAppointment';
+            parsed.newVariables = { ...(parsed.newVariables || {}), lastAppointmentId: appt.id };
           }
         }
-      }
 
-      setVariables(prev => ({ ...prev, ...(data.newVariables || {}) }));
-      setMessages([{ 
-        role: 'assistant', 
-        content: data.userMessage, 
-        stepId: data.stepId,
-        techLog: { action: data.actionName, description: data.actionDescription }
-      }]);
-      setChatHistory([{ role: 'assistant', content: raw }]);
+        setVariables(prev => ({ ...prev, ...(parsed.newVariables || {}) }));
+        setMessages([{ role: 'assistant', content: parsed.userMessage || 'Fluxo iniciado', stepId: parsed.stepId, techLog: { action: parsed.actionName, description: parsed.actionDescription } }]);
+        setChatHistory([{ role: 'assistant', content: JSON.stringify(parsed) }]);
+        setIsTyping(false);
+        return;
+      }
     } catch (err) {
-      setMessages([{ role: 'assistant', content: "Olá! O fluxo foi iniciado. Como posso te ajudar hoje?" }]);
-    } finally {
-      setIsTyping(false);
+      console.warn('/api/autoflow/simulate not available', err);
     }
+
+    // Local simple fallback
+    setMessages([{ role: 'assistant', content: `Olá! O fluxo "${trigger.title}" foi iniciado.` }]);
+    setChatHistory([{ role: 'assistant', content: `{"userMessage":"Olá!","stepId":"${trigger.id}"}` }]);
+    setIsTyping(false);
   };
 
   const handleSend = async (overrideInput?: string) => {
     const userMsg = overrideInput || input;
     if (!userMsg.trim() || isTyping) return;
-    
+
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsTyping(true);
 
-    const openai = getOpenAI();
     const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
 
+    // try server-side simulator
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: 'system',
-            content: `CONTEXTO DO FLUXO: ${JSON.stringify(steps)}.
-VARIÁVEIS ATUAIS: ${JSON.stringify(variables)}.
-
-Sua tarefa:
-1. Analise em qual passo estamos.
-2. Responda como a automação configurada.
-3. Se capturar dados novos, inclua em 'newVariables'.
-Responda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`
-          },
-          ...newHistory
-        ]
+      const res = await fetch('/api/autoflow/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'message', steps, variables, history: newHistory, message: userMsg })
       });
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = parseJson(data?.raw || data?.response || '{}') || data || {};
+        if (parsed.stepId) onStepActive(parsed.stepId);
 
-      const raw = response.choices[0]?.message?.content || "{}";
-      const data = parseJson(raw) || {};
-      if (data.stepId) onStepActive(data.stepId);
-
-      // se veio uma ação, execute localmente como POC
-      if (data.actionName) {
-        if (data.actionName === 'findAvailability') {
-          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, data.actionPayload || {});
-          if (res) {
-            data.newVariables = { ...(data.newVariables || {}), suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd };
-            data.actionDescription = `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}`;
-          } else {
-            data.actionDescription = 'Nenhuma janela disponível encontrada';
-          }
+        // actions local emulation
+        if (parsed.actionName === 'findAvailability') {
+          const r = findAvailabilityAction(availabilityList, appointmentsList, servicesList, parsed.actionPayload || {});
+          if (r) parsed.newVariables = { ...(parsed.newVariables || {}), suggestedStart: r.suggestedStart, suggestedEnd: r.suggestedEnd };
         }
-
-        if (data.actionName === 'createAppointment') {
-          const payload = data.actionPayload || {};
-          if (payload.start && payload.end) {
-            const appt = createAppointmentAction(appointmentsList, payload);
+        if (parsed.actionName === 'createAppointment') {
+          const p = parsed.actionPayload || {};
+          if (p.start && p.end) {
+            const appt = createAppointmentAction(appointmentsList, p);
             setAppointmentsList(prev => [...prev, appt]);
-            data.newVariables = { ...(data.newVariables || {}), lastAppointmentId: appt.id, lastAppointmentStart: appt.start };
-            data.actionDescription = `Agendamento criado ${appt.id} ${appt.start}`;
-          } else {
-            data.actionDescription = 'Payload incompleto para createAppointment';
+            parsed.newVariables = { ...(parsed.newVariables || {}), lastAppointmentId: appt.id };
           }
         }
-      }
 
-      if (data.newVariables) setVariables(prev => ({ ...prev, ...data.newVariables }));
-      
-      setMessages(prev => [...prev, { 
-        role: 'assistant', content: data.userMessage, stepId: data.stepId,
-        techLog: { action: data.actionName, description: data.actionDescription }
-      }]);
-      setChatHistory([...newHistory, { role: 'assistant', content: raw }]);
+        if (parsed.newVariables) setVariables(prev => ({ ...prev, ...parsed.newVariables }));
+        setMessages(prev => [...prev, { role: 'assistant', content: parsed.userMessage || 'Resposta', stepId: parsed.stepId, techLog: { action: parsed.actionName, description: parsed.actionDescription } }]);
+        setChatHistory([...newHistory, { role: 'assistant', content: JSON.stringify(parsed) }]);
+        setIsTyping(false);
+        return;
+      }
     } catch (err) {
-      console.error(err);
-    } finally {
-      setIsTyping(false);
+      console.warn('/api/autoflow/simulate not available', err);
     }
+
+    // fallback local behavior: basic echo / simple step advance
+    const next = steps.find(s => s.id === activeStepId) || steps[0];
+    const resp = `Simulado: recebido "${userMsg}"${next ? `, passo atual: ${next.title}` : ''}`;
+    setMessages(prev => [...prev, { role: 'assistant', content: resp }]);
+    setIsTyping(false);
   };
 
   return (

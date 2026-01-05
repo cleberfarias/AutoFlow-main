@@ -2,8 +2,10 @@ import express from 'express';
 import path from 'path';
 import qrcode from 'qrcode-terminal';
 import pkg from 'whatsapp-web.js';
+import multer from 'multer';
 const { Client, LocalAuth } = pkg;
 
+const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
 app.use(express.json());
 
@@ -213,6 +215,234 @@ app.post('/api/poc/find-availability', (req, res) => {
   if (!slot) return res.json({ found: false });
   res.json({ found: true, suggestedStart: slot.start, suggestedEnd: slot.end });
 });
+
+// ----- AutoFlow / ChatGuru endpoints (server-side implementations) -----
+
+function parseJson(text) {
+  try { return JSON.parse(text); } catch {}
+  const match = String(text || '').match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+
+function validatePatch(patch) {
+  const errors = [];
+  if (!patch || typeof patch !== 'object') return { valid: false, errors: ['patch_missing'] };
+  const dialogs = patch.dialogs || [];
+  const nodes = new Set(dialogs.map(d => d.dialog_node));
+  if (nodes.size !== dialogs.length) errors.push('dialog_node values must be unique');
+  for (const d of dialogs) {
+    if (!d.dialog_node || !d.dialog_node.trim()) errors.push(`dialog missing dialog_node: temp_id=${d.temp_id}`);
+    if (!d.title || !d.title.trim()) errors.push(`dialog missing title: ${d.dialog_node}`);
+    (d.actions || []).forEach((a, i) => {
+      if (a.type === 'RESPONDER' && (!a.params || !String(a.params.text || '').trim())) {
+        errors.push(`dialog ${d.dialog_node} action[${i}] RESPONDER with empty text`);
+      }
+    });
+  }
+  for (const l of (patch.links || [])) {
+    if (!nodes.has(l.source_node)) errors.push(`link source_node not found: ${l.source_node}`);
+    if (!nodes.has(l.target_node)) errors.push(`link target_node not found: ${l.target_node}`);
+    if (l.source_node === l.target_node) errors.push(`link cannot point to self: ${l.source_node}`);
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+app.post('/api/autoflow/suggest', async (req, res) => {
+  try {
+    const { prompt, type } = req.body || {};
+    const hasKey = !!process.env.OPENAI_API_KEY;
+    if (hasKey) {
+      try {
+        const { getOpenAI } = await import('../../services/openaiClient');
+        const openai = getOpenAI();
+        if (type === 'workflow') {
+          const messages = [
+            { role: 'system', content: `Você é um Consultor Sênior de Crescimento para PMEs brasileiros. Responda SOMENTE com JSON no formato { "steps": [...] }.` },
+            { role: 'user', content: `Pedido do cliente: "${prompt}"` }
+          ];
+          const response = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages });
+          const content = response.choices[0]?.message?.content || '';
+          const parsed = parseJson(content) || {};
+          return res.json({ steps: parsed.steps || [] });
+        }
+
+        if (type === 'suggestions') {
+          const messages = [
+            { role: 'system', content: `Sugira 3 formas rápidas de aumentar o faturamento usando automação. Responda SOMENTE com JSON no formato { "suggestions": ["...", "...", "..."] }.` },
+            { role: 'user', content: `Pedido: "${prompt}"` }
+          ];
+          const response = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages });
+          const content = response.choices[0]?.message?.content || '';
+          const parsed = parseJson(content) || {};
+          return res.json({ suggestions: parsed.suggestions || [] });
+        }
+
+        return res.json({ ok: true });
+      } catch (err) {
+        console.error('OpenAI suggest error', err);
+        return res.status(500).json({ error: 'suggest_llm_failed' });
+      }
+    }
+
+    // fallback stub
+    if (type === 'workflow') return res.json({ steps: [] });
+    if (type === 'suggestions') return res.json({ suggestions: ['Fidelização Automática', 'Upsell no Checkout', 'Lembrete de Reagendamento'] });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('/api/autoflow/suggest error', err);
+    res.status(500).json({ error: 'suggest_failed' });
+  }
+});
+
+app.post('/api/autoflow/apply', async (req, res) => {
+  try {
+    const { bot_id, patch, mode } = req.body || {};
+    if (!bot_id) return res.status(400).json({ error: 'bot_id_required' });
+    const v = validatePatch(patch);
+    if (!v.valid) return res.status(400).json({ error: 'patch_invalid', errors: v.errors });
+
+    // If configured, forward to real ChatGuru API
+    const base = process.env.CHATGURU_BASE_URL;
+    try {
+      if (base) {
+        // Transform patch links into ChatGuru internal context/conditions representation
+        const transformedPatch = JSON.parse(JSON.stringify(patch)); // deep clone
+        const nodesByDialog = new Map((transformedPatch.dialogs || []).map(d => [d.dialog_node, d]));
+        for (const l of (transformedPatch.links || [])) {
+          const key = `${l.source_node}__${l.target_node}`;
+          const source = nodesByDialog.get(l.source_node);
+          const target = nodesByDialog.get(l.target_node);
+          if (source) {
+            source.context = source.context || {};
+            source.context[key] = true;
+          }
+          if (target) {
+            target.conditions_entry_contexts = target.conditions_entry_contexts || [];
+            const cond = `$${key}==True`;
+            if (!target.conditions_entry_contexts.includes(cond)) target.conditions_entry_contexts.push(cond);
+          }
+        }
+
+        const endpoint = `${base.replace(/\/$/, '')}/api/autoflow/apply`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (process.env.CHATGURU_API_KEY) headers['Authorization'] = `Bearer ${process.env.CHATGURU_API_KEY}`;
+        const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ bot_id, patch: transformedPatch, mode }) });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`chatguru_apply_failed: ${resp.status} ${txt}`);
+        }
+        const body = await resp.json();
+        return res.json({ ok: true, forwarded: true, body });
+      }
+    } catch (err) {
+      console.error('Error forwarding to ChatGuru:', err);
+      return res.status(502).json({ error: 'chatguru_forward_failed', message: String(err) });
+    }
+
+    // no forwarding configured: return stub success
+    console.log('Applying ChatGuru patch (local stub)', { bot_id, mode, dialogs: (patch && patch.dialogs?.length) || 0, links: (patch && patch.links?.length) || 0 });
+    return res.json({ ok: true, bot_id, mode, applied: true });
+  } catch (err) {
+    console.error('/api/autoflow/apply error', err);
+    res.status(500).json({ error: 'apply_failed' });
+  }
+});
+
+app.post('/api/autoflow/simulate', async (req, res) => {
+  try {
+    const { type, steps, triggerId, message } = req.body || {};
+    const hasKey = !!process.env.OPENAI_API_KEY;
+    if (hasKey) {
+      try {
+        const { getOpenAI } = await import('../../services/openaiClient');
+        const openai = getOpenAI();
+        if (type === 'start') {
+          const trigger = (steps || [])[0] || null;
+          const messages = [
+            { role: 'system', content: `Você é o motor de execução AutoFlow. Processe o fluxo e responda sempre com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.` },
+            { role: 'user', content: `FLUXO: ${JSON.stringify(steps)}. Passe: ${trigger ? trigger.title : ''}. Inicie a simulação.` }
+          ];
+          const response = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages });
+          const content = response.choices[0]?.message?.content || '{}';
+          return res.json({ raw: content });
+        }
+        if (type === 'message') {
+          const messages = [ { role: 'system', content: `Contexto do fluxo: ${JSON.stringify(steps)}. Responda com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.` }, { role: 'user', content: message } ];
+          const response = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages });
+          const content = response.choices[0]?.message?.content || '{}';
+          return res.json({ raw: content });
+        }
+      } catch (err) {
+        console.error('simulate OpenAI error', err);
+        return res.status(500).json({ error: 'simulate_llm_failed' });
+      }
+    }
+
+    // fallback simple simulator
+    if (type === 'start') {
+      const trigger = (steps || [])[0] || null;
+      return res.json({ raw: JSON.stringify({ userMessage: `Fluxo iniciado: ${trigger ? trigger.title : 'sem passo' }`, stepId: trigger ? trigger.id : null }) });
+    }
+    if (type === 'message') {
+      return res.json({ raw: JSON.stringify({ userMessage: `Simulação: ${message}`, actionName: null, stepId: triggerId || (steps && steps[0] && steps[0].id) || null }) });
+    }
+    return res.status(400).json({ error: 'bad_request' });
+  } catch (err) {
+    console.error('/api/autoflow/simulate error', err);
+    res.status(500).json({ error: 'simulate_failed' });
+  }
+});
+
+app.post('/api/autoflow/transcribe', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file_required' });
+    if (process.env.OPENAI_API_KEY) {
+      const tmp = `/tmp/autoflow_transcribe_${Date.now()}.webm`;
+      const fs = await import('fs');
+      await fs.promises.writeFile(tmp, req.file.buffer);
+      try {
+        const { getOpenAI } = await import('../../services/openaiClient');
+        const openai = getOpenAI();
+        const resp = await openai.audio.transcriptions.create({ file: fs.createReadStream(tmp), model: 'whisper-1' });
+        await fs.promises.unlink(tmp);
+        return res.json({ text: resp.text });
+      } catch (err) {
+        try { await fs.promises.unlink(tmp); } catch {}
+        console.error('transcribe OpenAI error', err);
+        return res.status(500).json({ error: 'transcribe_llm_failed' });
+      }
+    }
+    // fallback stub
+    res.json({ text: 'Transcrição de exemplo (stub).' });
+  } catch (err) {
+    console.error('/api/autoflow/transcribe error', err);
+    res.status(500).json({ error: 'transcribe_failed' });
+  }
+});
+
+app.post('/api/autoflow/llm', async (req, res) => {
+  try {
+    const { prompt, opts } = req.body || {};
+    if (!process.env.OPENAI_API_KEY) return res.status(400).json({ error: 'openai_missing' });
+    try {
+      const { getOpenAI } = await import('../../services/openaiClient');
+      const openai = getOpenAI();
+      const messages = [];
+      if (opts?.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
+      messages.push({ role: 'user', content: prompt });
+      const response = await openai.chat.completions.create({ model: opts?.model || 'gpt-4o-mini', messages, max_tokens: opts?.maxTokens || 350 });
+      return res.json({ response: response.choices[0]?.message?.content || '' });
+    } catch (err) {
+      console.error('llm server error', err);
+      return res.status(500).json({ error: 'llm_failed' });
+    }
+  } catch (err) {
+    console.error('/api/autoflow/llm error', err);
+    res.status(500).json({ error: 'llm_failed' });
+  }
+});
+
 // Metrics endpoint (protected)
 app.get('/api/metrics', requireApiKey, async (req, res) => {
   try {
