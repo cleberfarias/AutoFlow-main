@@ -17,6 +17,10 @@ import { generateWorkflowFromPrompt } from './services/geminiService';
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
 import ChatGuruClient from './src/integrations/chatguru/client';
+// Generic patch and adapters
+import { exportGenericPatch } from './src/core/patch/genericV1';
+import { compileToChatGuru } from './src/adapters/chatguru/compile';
+import { compileToChatIA } from './src/adapters/chatia/compile';
 
 
 const App: React.FC = () => {
@@ -718,22 +722,42 @@ const App: React.FC = () => {
                }
              }} title="Exportar screenshot" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><Download size={20} /></button>
 
-             {/* ChatGuru integrations: export and publish */}
+             {/* Export buttons: Generic Patch v1, ChatGuru and chat-ia */}
+             <button onClick={async () => {
+               if (!activeWorkflow) return alert('Abra uma automação primeiro');
+               const patch = exportGenericPatch(activeWorkflow, { name: activeWorkflow.name, locale: 'pt-BR' });
+               const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
+               const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(activeWorkflow.name || 'patch').replace(/\s+/g,'_')}_autoflow_patch_v1.json`; a.click();
+             }} title="Exportar Patch Genérico (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-indigo-600">Patch Genérico</button>
+
              <button onClick={async () => {
                if (!activeWorkflow) return alert('Abra uma automação primeiro');
                const botId = window.prompt('Informe bot_id para o ChatGuru (ex: my-bot)') || '';
-               const patch = exportWorkflowToChatGuru(botId || '', activeWorkflow);
+               const generic = exportGenericPatch(activeWorkflow, { name: activeWorkflow.name, locale: 'pt-BR' });
+               const patch = compileToChatGuru(generic, botId || '');
                const v = validateChatGuruPatch(patch);
                if (!v.valid) return alert('Patch inválido: ' + v.errors.join('\n'));
                // download
                const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(activeWorkflow.name || 'patch').replace(/\s+/g,'_')}_chatguru_patch.json`; a.click();
-             }} title="Exportar ChatGuru Patch (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-green-600">Patch JSON</button>
+             }} title="Exportar ChatGuru (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-green-600">Export ChatGuru</button>
+
+             <button onClick={async () => {
+               if (!activeWorkflow) return alert('Abra uma automação primeiro');
+               const generic = exportGenericPatch(activeWorkflow, { name: activeWorkflow.name, locale: 'pt-BR' });
+               const doc = compileToChatIA(generic);
+               const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+               const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(activeWorkflow.name || 'automation').replace(/\s+/g,'_')}_chatia_doc.json`; a.click();
+               // copy to clipboard as convenience
+               try { await navigator.clipboard.writeText(JSON.stringify(doc, null, 2)); } catch (e) {}
+               alert('Exportado chat-ia (arquivo e copiado para clipboard)');
+             }} title="Exportar chat-ia (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-purple-600">Export chat-ia</button>
 
              <button onClick={async () => {
                if (!activeWorkflow) return alert('Abra uma automação primeiro');
                const botId = window.prompt('Informe bot_id para o ChatGuru (ex: my-bot)') || '';
-               const patch = exportWorkflowToChatGuru(botId || '', activeWorkflow);
+               const generic = exportGenericPatch(activeWorkflow, { name: activeWorkflow.name, locale: 'pt-BR' });
+               const patch = compileToChatGuru(generic, botId || '');
                const v = validateChatGuruPatch(patch);
                if (!v.valid) return alert('Patch inválido: ' + v.errors.join('\n'));
                try {
