@@ -248,6 +248,51 @@ function validatePatch(patch) {
   return { valid: errors.length === 0, errors };
 }
 
+// Helper: send a fetch with retries and exponential backoff + jitter
+async function sendWithRetries(url, opts, maxAttempts = parseInt(process.env.CHATGURU_MAX_RETRIES || '3'), baseDelay = parseInt(process.env.CHATGURU_RETRY_BASE_MS || '300')) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.info(JSON.stringify({ event: 'chatguru_forward_attempt', url, attempt }));
+      const res = await fetch(url, opts);
+      // resiliency: some test fakes provide json()/ok but not text() - handle both
+      let text = '';
+      try {
+        if (typeof res.text === 'function') {
+          text = await res.text();
+        } else if (typeof res.json === 'function') {
+          const j = await res.json();
+          text = typeof j === 'string' ? j : JSON.stringify(j);
+        }
+      } catch (e) {
+        text = '';
+      }
+
+      if (res.ok) {
+        let body = text;
+        try { body = JSON.parse(text); } catch {
+          // if parsing failed and res.json available, try that
+          try { body = await res.json(); } catch {}
+        }
+        console.info(JSON.stringify({ event: 'chatguru_forward_success', url, attempt }));
+        return { ok: true, status: res.status, body };
+      } else {
+        console.warn(JSON.stringify({ event: 'chatguru_forward_non_ok', url, attempt, status: res.status, body: text }));
+        // throw to trigger retry unless last attempt
+        if (attempt === maxAttempts) {
+          return { ok: false, status: res.status, body: text };
+        }
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'chatguru_forward_error', url, attempt, message: String(err) }));
+      if (attempt === maxAttempts) throw err;
+    }
+    // backoff with jitter
+    const jitter = Math.floor(Math.random() * 100);
+    const delay = Math.floor(baseDelay * Math.pow(2, attempt - 1) + jitter);
+    await new Promise(r => setTimeout(r, delay));
+  }
+}
+
 app.post('/api/autoflow/suggest', async (req, res) => {
   try {
     const { prompt, type } = req.body || {};
@@ -327,13 +372,17 @@ app.post('/api/autoflow/apply', async (req, res) => {
         const endpoint = `${base.replace(/\/$/, '')}/api/autoflow/apply`;
         const headers = { 'Content-Type': 'application/json' };
         if (process.env.CHATGURU_API_KEY) headers['Authorization'] = `Bearer ${process.env.CHATGURU_API_KEY}`;
-        const resp = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ bot_id, patch: transformedPatch, mode }) });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`chatguru_apply_failed: ${resp.status} ${txt}`);
+        const opts = { method: 'POST', headers, body: JSON.stringify({ bot_id, patch: transformedPatch, mode }), credentials: 'include' };
+        try {
+          const result = await sendWithRetries(endpoint, opts);
+          if (!result.ok) {
+            throw new Error(`chatguru_apply_failed: ${result.status} ${String(result.body)}`);
+          }
+          return res.json({ ok: true, forwarded: true, body: result.body });
+        } catch (err) {
+          console.error('Error forwarding to ChatGuru (after retries):', err);
+          return res.status(502).json({ error: 'chatguru_forward_failed', message: String(err) });
         }
-        const body = await resp.json();
-        return res.json({ ok: true, forwarded: true, body });
       }
     } catch (err) {
       console.error('Error forwarding to ChatGuru:', err);
