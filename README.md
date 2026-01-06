@@ -60,6 +60,18 @@ Dev proxy (recommended):
 - Set `VITE_CHATGURU_API_BASE_URL=http://localhost:5000` in your `.env` and run `npm run dev` — Vite will proxy `/api/*` to that url and cookies will be included when using `credentials: 'include'`.
 - This removes the need for CORS config in local ChatGuru during development.
 
+Usando o arquivo de exemplo `.env.local.example` (dev)
+- Copie o arquivo de exemplo para criar seu arquivo local de configuração:
+
+  cp .env.local.example .env.local
+
+- Edite `.env.local` e ajuste `VITE_CHATGURU_API_BASE_URL` (ex: `http://localhost:5000`) conforme seu ambiente local.
+- **Importante:** NÃO coloque chaves sensíveis (ex.: `OPENAI_API_KEY`, `CHATGURU_API_KEY`) em arquivos `.env` que vão para o frontend — variáveis `VITE_*` são embutidas no bundle. Coloque segredos no ambiente do servidor (ex.: `OPENAI_API_KEY`, `CHATGURU_BASE_URL`, `CHATGURU_API_KEY`).
+- Após alterar `.env.local`, reinicie o servidor de desenvolvimento (`npm run dev`) para que as variáveis sejam carregadas.
+
+Dica rápida:
+- Se você executar o ChatGuru localmente em `localhost:5000`, com o proxy configurado o AutoFlow chamará `/api/autoflow/*` sem precisar configurar CORS no ChatGuru, e cookies de sessão serão transmitidos automaticamente quando `credentials: 'include'` for usado.
+
 4. Run the app:
    `npm run dev`
 5. (Opcional) Execute os testes:
