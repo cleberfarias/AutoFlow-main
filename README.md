@@ -55,6 +55,11 @@ Cleber Delgado
    - `CHATGURU_MAX_RETRIES` (optional) — number of attempts to forward (default: 3).
    - `CHATGURU_RETRY_BASE_MS` (optional) — base delay (ms) for backoff (default: 300).
 
+Dev proxy (recommended):
+- To avoid CORS during local development when ChatGuru runs on another port (ex: `localhost:5000`), you can use the Vite dev proxy which forwards `/api` to your ChatGuru instance.
+- Set `VITE_CHATGURU_API_BASE_URL=http://localhost:5000` in your `.env` and run `npm run dev` — Vite will proxy `/api/*` to that url and cookies will be included when using `credentials: 'include'`.
+- This removes the need for CORS config in local ChatGuru during development.
+
 4. Run the app:
    `npm run dev`
 5. (Opcional) Execute os testes:

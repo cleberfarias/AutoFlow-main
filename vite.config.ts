@@ -16,6 +16,16 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Dev proxy to avoid CORS and allow cookies to be sent to ChatGuru running on a different port
+        proxy: {
+          '/api': {
+            target: env.VITE_CHATGURU_API_BASE_URL || 'http://localhost:5000',
+            changeOrigin: true,
+            secure: false,
+            // preserve path and allow cookies
+            // Note: in production, ChatGuru should be on the same origin or handled by proper reverse proxy
+          }
+        }
       },
       plugins: [react()],
       // Do not embed secret keys at build time. Keys must remain only in server environment variables.
