@@ -47,10 +47,17 @@ Cleber Delgado
 
 1. Install dependencies:
    `npm install`
-2. Set the `VITE_OPENAI_API_KEY` in [.env.local](.env.local) to your OpenAI API key
-3. Run the app:
+2. Do NOT set any OpenAI/Gemini API key in frontend env (e.g., no `VITE_*` keys that contain secrets). Configure OpenAI on the server only as `OPENAI_API_KEY`.
+3. Environment variables (server-side):
+   - `OPENAI_API_KEY` (optional, for server LLM operations)
+   - `CHATGURU_BASE_URL` (optional, e.g., `https://chatguru.yourdomain`) — if not set, the app uses same-origin and the /api/autoflow/apply will act as a stub in development.
+   - `CHATGURU_API_KEY` (optional) — used as Bearer when forwarding to ChatGuru.
+   - `CHATGURU_MAX_RETRIES` (optional) — number of attempts to forward (default: 3).
+   - `CHATGURU_RETRY_BASE_MS` (optional) — base delay (ms) for backoff (default: 300).
+
+4. Run the app:
    `npm run dev`
-4. (Opcional) Execute os testes:
+5. (Opcional) Execute os testes:
    `npm test`
 
 ## Connectors (POC)
