@@ -22,12 +22,15 @@ describe('ChatGuru exporter and validator', () => {
     expect(patch.layout.length).toBe(2);
     expect(patch.links.length).toBe(1);
 
-    // check dialog_node stable format: slug + suffix
+    // check dialog_node stable format: slug + suffix (suffix up to 8 chars)
     const dlg1 = patch.dialogs.find((d:any) => d.temp_id === 'step1');
-    expect(dlg1.dialog_node).toMatch(/^[a-z0-9_]+_[a-z0-9]{1,4}$/);
+    expect(dlg1.dialog_node).toMatch(/^[a-z0-9_]+_[a-z0-9]{1,8}$/);
 
-    // exporter must NOT add context/conditions for links (only links[])
-    expect(dlg1.context && Object.keys(dlg1.context).length).toBe(0);
+    // exporter must namespace params in context under 'autoflow' and NOT add link-derived context/conditions
+    expect(dlg1.context).toBeDefined();
+    expect(dlg1.context.autoflow).toBeDefined();
+    // ensure not adding source__target keys in exporter context
+    expect(Object.keys(dlg1.context.autoflow).some(k => k.includes('__'))).toBe(false);
     const tgt = patch.dialogs.find((d:any) => d.temp_id === 'step2');
     expect(tgt.conditions_entry_contexts && tgt.conditions_entry_contexts.length).toBe(0);
 

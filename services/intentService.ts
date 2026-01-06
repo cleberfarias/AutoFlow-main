@@ -54,7 +54,8 @@ async function computeEmbeddingsIfNeeded() {
   if (EMBEDDINGS_CACHE) return EMBEDDINGS_CACHE;
   // During tests we skip external embedding calls to keep tests fast and deterministic
   if (process.env.NODE_ENV === "test") return (EMBEDDINGS_CACHE = null);
-  const apiKey = (process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+  // Use only server-side OPENAI_API_KEY (do not rely on Vite VITE_* variables in production)
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return (EMBEDDINGS_CACHE = null);
   try {
     const { getOpenAI } = await import("./openaiClient");

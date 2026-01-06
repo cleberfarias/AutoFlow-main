@@ -18,10 +18,7 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
+      // Do not embed secret keys at build time. Keys must remain only in server environment variables.
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

@@ -9,10 +9,17 @@ function slugifyTitle(title: string) {
     .slice(0, 40);
 }
 
-function makeDialogNode(step: WorkflowStep) {
+function makeDialogNode(step: WorkflowStep, existing = new Set<string>()) {
   const base = slugifyTitle(step.title || 'node');
-  const suffix = (step.id || '').slice(-4) || Math.random().toString(36).slice(2,6);
-  return `${base}_${suffix}`;
+  const idSuffix = (step.id || '').slice(-8);
+  const suffix = (idSuffix && idSuffix.length > 0) ? idSuffix : Math.random().toString(36).slice(2,10);
+  let candidate = `${base}_${suffix}`;
+  // ensure uniqueness
+  while (existing.has(candidate)) {
+    candidate = `${base}_${Math.random().toString(36).slice(2,8)}`;
+  }
+  existing.add(candidate);
+  return candidate;
 }
 
 export function exportWorkflowToChatGuru(botId: string, workflow: Workflow): ChatGuruPatch {
@@ -21,8 +28,10 @@ export function exportWorkflowToChatGuru(botId: string, workflow: Workflow): Cha
   const nodeMap: Record<string, string> = {}; // step.id -> dialog_node
 
   // first pass: create dialog_node names
+  // first pass allocate unique dialog_node names
+  const existingNodes = new Set<string>();
   for (const s of workflow.steps) {
-    nodeMap[s.id] = makeDialogNode(s);
+    nodeMap[s.id] = makeDialogNode(s, existingNodes);
   }
 
   for (const s of workflow.steps) {
@@ -41,7 +50,8 @@ export function exportWorkflowToChatGuru(botId: string, workflow: Workflow): Cha
       node_type: 'DIALOG',
       conditions_list: [],
       conditions_entry_contexts: [],
-      context: { ...s.params },
+      // Namespace step params to avoid collisions with link context keys
+      context: { autoflow: { ...(s.params || {}) } },
       actions
     };
     dialogs.push(dlg);
@@ -49,13 +59,18 @@ export function exportWorkflowToChatGuru(botId: string, workflow: Workflow): Cha
     layout.push({ dialog_node, left: Math.round(s.position?.x || 0), top: Math.round(s.position?.y || 0) });
   }
 
-  // links: use nextSteps to infer edges
+  // links: use nextSteps to infer edges. Validate that target steps exist in the workflow.
   const links: ChatGuruLink[] = [];
   for (const s of workflow.steps) {
     const src = nodeMap[s.id];
     for (const tId of s.nextSteps || []) {
+      if (!nodeMap[tId]) {
+        // Skip invalid links where target does not exist
+        console.warn(`exportWorkflowToChatGuru: skipping link from ${s.id} to missing step ${tId}`);
+        continue;
+      }
       const tgt = nodeMap[tId];
-      if (src && tgt) links.push({ source_node: src, target_node: tgt });
+      links.push({ source_node: src, target_node: tgt });
     }
   }
 
