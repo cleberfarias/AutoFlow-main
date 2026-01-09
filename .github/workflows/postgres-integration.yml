@@ -41,6 +41,15 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/autoflow
         run: echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+      - name: Switch Prisma provider to postgresql when using Postgres
+        run: |
+          if [[ "${DATABASE_URL}" == postgres* ]]; then
+            echo "Using Postgres DATABASE_URL, switching Prisma provider to postgresql"
+            sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+            cat prisma/schema.prisma | sed -n '1,60p'
+          else
+            echo "Leaving Prisma provider as-is"
+          fi
       - name: Generate Prisma Client
         run: npx prisma generate --schema=prisma/schema.prisma
       - name: Push Prisma schema (create tables)
