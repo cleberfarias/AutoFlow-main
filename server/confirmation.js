@@ -1,31 +1,13 @@
-import db from './db.js';
-import fs from 'fs';
-import path from 'path';
+import { getPendingByChatId, insertPending, popPendingByChatId, deletePendingByChatId, removeExpired } from './pendingStore.js';
 
 const DEFAULT_TTL = parseInt(process.env.PENDING_CONFIRMATION_TTL_SECONDS || '3600', 10);
 
-function nowMs() {
-  return Date.now();
-}
+function nowMs() { return Date.now(); }
 
 async function cleanupPendingExpired() {
-  if (!db.data) await db.read();
-  if (!db.data.pendingConfirmations) return [];
   const now = nowMs();
-  const removed = db.data.pendingConfirmations.filter(p => p.expiresAt && p.expiresAt <= now);
-  db.data.pendingConfirmations = db.data.pendingConfirmations.filter(p => !p.expiresAt || p.expiresAt > now);
-  if (removed.length > 0) {
-    try {
-      await db.write();
-    } catch (err) {
-      try {
-        const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'db.json');
-        fs.writeFileSync(dbPath, JSON.stringify(db.data, null, 2));
-      } catch (err2) {
-        console.error('Fallback write in cleanup failed:', err2);
-      }
-    }
-    // metrics: count expirations
+  const removed = removeExpired(now);
+  if (removed && removed.length > 0) {
     try {
       const { increment } = await import('./metrics.js');
       increment('expirations', removed.length);
@@ -36,72 +18,61 @@ async function cleanupPendingExpired() {
 
 export async function setPendingConfirmation(chatId, entry, ttlSeconds = DEFAULT_TTL) {
   // entry: { action, intent, originalText, timestamp }
-  if (!db.data) await db.read();
-  if (!db.data.pendingConfirmations) db.data.pendingConfirmations = [];
-  // cleanup expired before setting
   await cleanupPendingExpired();
-  // replace existing for chatId
-  db.data.pendingConfirmations = db.data.pendingConfirmations.filter(p => p.chatId !== chatId);
+  // remove existing from store
+  deletePendingByChatId(chatId);
   const createdAt = nowMs();
-  const record = { id: `pc_${createdAt}_${Math.floor(Math.random() * 9999)}`, chatId, createdAt, expiresAt: createdAt + ttlSeconds * 1000, ...entry };
-  db.data.pendingConfirmations.push(record);
+  const record = { id: `pc_${createdAt}_${Math.floor(Math.random() * 9999)}`, chatId, createdAt: new Date(createdAt).toISOString(), expiresAt: createdAt + ttlSeconds * 1000, ...entry };
+  const inserted = insertPending(record);
+  // keep in-memory db.data in sync for backward compatibility
   try {
-    await db.write();
-  } catch (err) {
-    try {
-      const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'db.json');
-      fs.writeFileSync(dbPath, JSON.stringify(db.data, null, 2));
-    } catch (err2) {
-      console.error('Fallback write failed in setPendingConfirmation:', err2);
-    }
-  }
-  return record;
+    const dbModule = await import('./db.js');
+    if (!dbModule.default.data) await dbModule.default.read();
+    if (!dbModule.default.data.pendingConfirmations) dbModule.default.data.pendingConfirmations = [];
+    // remove any existing for chatId and push
+    dbModule.default.data.pendingConfirmations = dbModule.default.data.pendingConfirmations.filter(p => p.chatId !== chatId);
+    dbModule.default.data.pendingConfirmations.push(inserted);
+    try { await dbModule.default.write(); } catch (e) {}
+  } catch (e) {}
+  return inserted;
 }
 
 export async function getPendingConfirmation(chatId) {
-  if (!db.data) await db.read();
-  if (!db.data.pendingConfirmations) return null;
   await cleanupPendingExpired();
-  return db.data.pendingConfirmations.find(p => p.chatId === chatId) || null;
+  return getPendingByChatId(chatId);
 }
 
 export async function popPendingConfirmation(chatId) {
-  if (!db.data) await db.read();
-  if (!db.data.pendingConfirmations) return null;
   await cleanupPendingExpired();
-  const idx = db.data.pendingConfirmations.findIndex(p => p.chatId === chatId);
-  if (idx === -1) return null;
-  const [entry] = db.data.pendingConfirmations.splice(idx, 1);
+  const p = popPendingByChatId(chatId);
+  // sync in-memory
   try {
-    await db.write();
-  } catch (err) {
-    try {
-      const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'db.json');
-      fs.writeFileSync(dbPath, JSON.stringify(db.data, null, 2));
-    } catch (err2) {
-      console.error('Fallback write failed:', err2);
+    const dbModule = await import('./db.js');
+    if (!dbModule.default.data) await dbModule.default.read();
+    if (dbModule.default.data && Array.isArray(dbModule.default.data.pendingConfirmations)) {
+      dbModule.default.data.pendingConfirmations = dbModule.default.data.pendingConfirmations.filter(x => x.chatId !== chatId);
+      try { await dbModule.default.write(); } catch (e) {}
     }
-  }
-  return entry;
+  } catch (e) {}
+  return p;
 }
 
 export async function clearPendingConfirmation(chatId) {
-  if (!db.data) await db.read();
-  if (!db.data.pendingConfirmations) return null;
-  const before = db.data.pendingConfirmations.length;
-  db.data.pendingConfirmations = db.data.pendingConfirmations.filter(p => p.chatId !== chatId);
-  if (db.data.pendingConfirmations.length !== before) {
-    try {
-      await db.write();
-    } catch (err) {
-      try {
-        const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'db.json');
-        fs.writeFileSync(dbPath, JSON.stringify(db.data, null, 2));
-      } catch (err2) {
-        console.error('Fallback write failed in clearPendingConfirmation:', err2);
+  const deleted = deletePendingByChatId(chatId);
+  // sync in-memory
+  try {
+    const dbModule = await import('./db.js');
+    if (!dbModule.default.data) await dbModule.default.read();
+    if (dbModule.default.data && Array.isArray(dbModule.default.data.pendingConfirmations)) {
+      const before = dbModule.default.data.pendingConfirmations.length;
+      dbModule.default.data.pendingConfirmations = dbModule.default.data.pendingConfirmations.filter(p => p.chatId !== chatId);
+      if (dbModule.default.data.pendingConfirmations.length !== before) {
+        try { await dbModule.default.write(); } catch (e) {}
       }
     }
-    // metrics: rejection
+  } catch (e) {}
+
+  if (deleted && deleted.length > 0) {
     try {
       const { increment } = await import('./metrics.js');
       increment('rejections', 1);

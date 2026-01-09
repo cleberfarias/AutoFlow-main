@@ -17,4 +17,9 @@ model PendingConfirmation {
   createdAt    DateTime @default(now())
 }
 
+model Storage {
+  key   String @id
+  value String
+}
+
 // Additional models can be added progressively (Clients, Forwards, ChatActions, etc.)
