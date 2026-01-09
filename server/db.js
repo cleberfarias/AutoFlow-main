@@ -12,9 +12,21 @@ const db = new Low(adapter);
 
 // Setup SQLite storage mirror so other modules can read persisted JSON state
 import Database from 'better-sqlite3';
-const sqlitePath = process.env.DATABASE_URL ? process.env.DATABASE_URL.replace('file:','') : path.join(process.cwd(), 'dev.db');
 let sqliteDb = null;
 try {
+  // Determine sqlite path safely:
+  // - If SQLITE_MIRROR_PATH is set, use it (explicit override)
+  // - Else if DATABASE_URL starts with file:, use the file path
+  // - Otherwise use a local dev file `dev.db` for dev/test environments
+  let sqlitePath = null;
+  if (process.env.SQLITE_MIRROR_PATH) {
+    sqlitePath = process.env.SQLITE_MIRROR_PATH;
+  } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:')) {
+    sqlitePath = process.env.DATABASE_URL.replace('file:', '');
+  } else {
+    sqlitePath = path.join(process.cwd(), 'dev.db');
+  }
+
   sqliteDb = new Database(sqlitePath);
   sqliteDb.prepare('CREATE TABLE IF NOT EXISTS storage (key TEXT PRIMARY KEY, value TEXT)').run();
 } catch (e) {
