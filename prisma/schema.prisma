@@ -13,7 +13,7 @@ model PendingConfirmation {
   action       String
   intent       String?
   originalText String?
-  expiresAt    Int
+  expiresAt    BigInt
   createdAt    DateTime @default(now())
 }
 
