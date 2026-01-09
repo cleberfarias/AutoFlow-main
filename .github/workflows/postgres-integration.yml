@@ -1,0 +1,53 @@
+name: CI (Postgres Integration)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: autoflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d autoflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 15); do
+            pg_isready -h localhost -p 5432 -U postgres -d autoflow && break || sleep 2
+          done
+      - name: Set DATABASE_URL
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/autoflow
+        run: echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=prisma/schema.prisma
+      - name: Push Prisma schema (create tables)
+        run: npx prisma db push --schema=prisma/schema.prisma
+      - name: Run data migration from db.json
+        run: npm run migrate:prisma:postgres
+      - name: Run tests
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm test --silent
