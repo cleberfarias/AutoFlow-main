@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const srcPath = path.join(process.cwd(), 'data', 'db.json');
+  const srcPath = process.env.MIGRATE_SOURCE ? path.resolve(process.env.MIGRATE_SOURCE) : path.join(process.cwd(), 'data', 'db.json');
   if (!fs.existsSync(srcPath)) {
     console.warn('No data/db.json found, nothing to rollback');
     await prisma.$disconnect();

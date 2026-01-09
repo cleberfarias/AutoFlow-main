@@ -2,14 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
-async function main() {
-  const srcPath = path.join(process.cwd(), 'data', 'db.json');
+export async function runMigration(sourcePath) {
+  const prisma = new PrismaClient();
+  const srcPath = sourcePath ? path.resolve(sourcePath) : (process.env.MIGRATE_SOURCE ? path.resolve(process.env.MIGRATE_SOURCE) : path.join(process.cwd(), 'data', 'db.json'));
   if (!fs.existsSync(srcPath)) {
     console.warn('No data/db.json found, skipping migration');
-    await prisma.$disconnect();
-    return;
+    return { migrated: 0 };
   }
 
   const raw = fs.readFileSync(srcPath, 'utf-8');
@@ -18,7 +16,7 @@ async function main() {
     src = JSON.parse(raw);
   } catch (e) {
     console.error('Failed to parse data/db.json:', e);
-    process.exit(1);
+    throw e;
   }
 
   const pendings = Array.isArray(src.pendingConfirmations) ? src.pendingConfirmations : [];
@@ -29,6 +27,7 @@ async function main() {
   for (const p of pendings) {
     try {
       const id = p.id || `pc_${Date.now()}_${Math.floor(Math.random()*9999)}`;
+      console.log('Migrating pending', id);
       const expires = p.expiresAt != null ? BigInt(String(p.expiresAt)) : null;
       const createdAt = p.createdAt ? new Date(p.createdAt) : new Date();
       await prisma.pendingConfirmation.upsert({
@@ -72,11 +71,11 @@ async function main() {
   }
 
   console.log('Migration to Postgres (via Prisma) completed.');
-  await prisma.$disconnect();
+  try { await prisma.$disconnect(); } catch (e) {}
+  return { migrated: pendings.length };
 }
 
-main().catch(async (e) => {
-  console.error('Migration failed:', e && e.message ? e.message : e);
-  try { await prisma.$disconnect(); } catch (e2) {}
-  process.exit(1);
-});
+// Run when executed directly
+if (process.argv[1] && process.argv[1].endsWith('migrate-lowdb-to-postgres.js')) {
+  runMigration().then(async (r) => { try { await prisma.$disconnect(); } catch(e){} }).catch(async (e) => { console.error('Migration failed:', e && e.message ? e.message : e); try { await prisma.$disconnect(); } catch (e2) {} process.exit(1); });
+}
