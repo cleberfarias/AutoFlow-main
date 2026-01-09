@@ -52,6 +52,8 @@ Recomendo usar Postgres para produção e testes de integração. Abaixo estão 
 - Rollback (reverte as entradas migradas a partir de `data/db.json`):
   - `npm run rollback:migrate:postgres`
 
+- Nota: Os scripts de migração e rollback foram arquivados para `scripts/legacy/` e o teste correspondente foi movido para `tests/legacy/` — mantidos para referência e possível reutilização, mas não fazem parte do fluxo normal de deploy.
+
 > Observação: Na CI, já adicionamos um workflow (`.github/workflows/postgres-integration.yml`) que inicializa um serviço Postgres, aplica o schema e executa `npm run migrate:prisma:postgres` antes de rodar os testes.
 
 ---
