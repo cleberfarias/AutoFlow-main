@@ -50,23 +50,38 @@ db.write = async function () {
   } catch (e) {
     console.error('Failed to write storage mirror to sqlite:', e.message || e);
   }
-};
+  // Also try to mirror into Prisma Storage if available
+  try {
+    const sp = await import('./storagePrisma.js');
+    try { await sp.setStorage('db', JSON.stringify(db.data)); } catch (e) {}
+  } catch (e) {
+    // ignore dynamic import failure
+  }};
 
-// Initialize DB: prefer sqlite storage mirror if present
+// Initialize DB: prefer Prisma storage mirror, then sqlite mirror if present
 try {
-  if (sqliteDb) {
+  // Try Prisma Storage first (if available)
+  try {
+    const sp = await import('./storagePrisma.js');
+    const val = await sp.getStorage('db');
+    if (val) {
+      try { db.data = JSON.parse(val); } catch (e) { console.warn('Failed to parse prisma storage value, falling back to other sources:', e.message || e); }
+    }
+  } catch (e) {
+    // ignore — prisma not available or failed
+  }
+
+  // If prisma didn't provide, try sqlite mirror
+  if (!db.data && sqliteDb) {
     const row = sqliteDb.prepare('SELECT value FROM storage WHERE key = ?').get('db');
     if (row && row.value) {
-      try {
-        db.data = JSON.parse(row.value);
-      } catch (e) {
-        console.warn('Failed to parse sqlite storage value, falling back to file:', e.message || e);
-      }
+      try { db.data = JSON.parse(row.value); } catch (e) { console.warn('Failed to parse sqlite storage value, falling back to file:', e.message || e); }
     }
   }
+
   await db.read();
   if (!db.data) db.data = { clients: [] };
-  // ensure sqlite mirror contains latest
+  // ensure mirrors contain latest
   try { await db.write(); } catch (e) {}
 } catch (err) {
   console.error('DB init warning:', err);
