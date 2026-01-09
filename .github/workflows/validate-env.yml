@@ -1,0 +1,50 @@
+name: Validate CI environment secrets
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-secrets:
+    name: Check required secrets
+    runs-on: ubuntu-latest
+    env:
+      CHATGURU_BASE_URL: ${{ secrets.CHATGURU_BASE_URL }}
+      CHATGURU_API_KEY: ${{ secrets.CHATGURU_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      WHATSAPP_SESSION_DIR: ${{ secrets.WHATSAPP_SESSION_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inform about forked PRs
+        if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository) }}
+        run: |
+          echo "PR from fork detected; repository secrets are not available for forked PRs. Secret checks will be skipped."
+
+      - name: Validate required secrets
+        if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository) }}
+        run: |
+          set -e
+          missing=0
+          echo "Checking required CI secrets..."
+          for v in CHATGURU_BASE_URL CHATGURU_API_KEY OPENAI_API_KEY; do
+            val=$(printenv "$v" || true)
+            if [ -z "$val" ]; then
+              echo "::error::Missing required secret or env var: $v"
+              missing=1
+            else
+              echo "Found $v"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required CI secrets are missing. Please add them to the repository secrets for integration environments." >&2
+            exit 1
+          fi
+
+      - name: Smoke test: show endpoints (push only)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          echo "Secrets validated on main branch."
