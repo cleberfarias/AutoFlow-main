@@ -19,10 +19,26 @@ export interface WorkflowStep {
     condition?: string;
     inputs?: string[];
     outputs?: string[];
+    // API integration config (optional)
+    api?: {
+      url?: string;
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+      headers?: Array<{ name: string; value: string }>;
+      bodyTemplate?: string; // templated body using {{var}} and {{SECRET:NAME}}
+      auth?: { type?: 'none' | 'bearer' | 'apiKey' | 'basic'; headerName?: string; secretRef?: string };
+      responseMapping?: Array<{ jsonPath: string; outputKey: string }>;
+      timeoutMs?: number;
+    };
     [key: string]: any;
   };
   position: { x: number; y: number };
+
+  // UI/UX helper fields (optional)
+  helpText?: string; // short explanation to show in guided mode
+  requiredFields?: string[]; // e.g., ['title'], ['title','outputs']
+  isComplete?: boolean; // whether the user confirmed this node
 }
+
 
 export interface GroupBox {
   id: string;

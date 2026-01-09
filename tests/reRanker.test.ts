@@ -21,4 +21,24 @@ describe('reRanker', () => {
     const ranked = reRank(text, candidates, { normalizeWeight: 1.0, existingWeight: 0.2 });
     expect(ranked[0].intentId).toBe('i2');
   });
+
+  it('should prefer candidate with similar example (fuzzy)', () => {
+    const text = 'How much is the price?';
+    const candidates = [
+      { intentId: 'a', example: 'What is the price of this item?', score: 0.2 },
+      { intentId: 'b', example: 'Hello', score: 0.5 }
+    ];
+    const ranked = reRank(text, candidates, { normalizeWeight: 1, existingWeight: 0.2 });
+    expect(ranked[0].intentId).toBe('a');
+  });
+
+  it('should favor existing high score when examples are not similar', () => {
+    const text = 'Unrelated query';
+    const candidates = [
+      { intentId: 'a', example: 'Some example', score: 0.4 },
+      { intentId: 'b', example: 'Another example', score: 0.9 }
+    ];
+    const ranked = reRank(text, candidates, { normalizeWeight: 1, existingWeight: 0.8 });
+    expect(ranked[0].intentId).toBe('b');
+  });
 });

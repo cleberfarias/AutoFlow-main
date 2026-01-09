@@ -1,5 +1,5 @@
 {
-  "name": "autoflow-ai---automações-em-linguagem-natural",
+  "name": "autoflow-ai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,13 +9,22 @@
     "deploy": "npm run build && cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "test": "vitest",
-    "whatsapp:start": "node connectors/whatsapp/server.js"
+    "whatsapp:start": "node connectors/whatsapp/server.js",
+    "server": "node connectors/whatsapp/server.js",
+    "prisma:push": "npx prisma db push",
+    "migrate:prisma": "node scripts/migrate-lowdb-to-sqlite.js"
   },
   "dependencies": {
     "axios": "^1.5.0",
+    "better-sqlite3": "^12.5.0",
+    "bullmq": "^5.66.4",
+    "compute-cosine-similarity": "^1.1.0",
     "express": "^5.2.1",
+    "fuse.js": "^7.1.0",
     "html-to-image": "^1.11.13",
+    "ioredis": "^5.9.1",
     "lowdb": "^5.0.0",
+    "lru-cache": "^11.2.4",
     "lucide-react": "^0.562.0",
     "openai": "^4.104.0",
     "qrcode-terminal": "^0.12.0",
@@ -24,8 +33,11 @@
     "whatsapp-web.js": "^1.34.2"
   },
   "devDependencies": {
+    "@prisma/client": "^7.2.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "dotenv": "^17.2.3",
+    "prisma": "^4.16.2",
     "supertest": "^6.3.4",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",

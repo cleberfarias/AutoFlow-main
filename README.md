@@ -50,6 +50,21 @@ Cleber Delgado
 2. Set the `VITE_OPENAI_API_KEY` in [.env.local](.env.local) to your OpenAI API key
 3. Run the app:
    `npm run dev`
+
+Dev options for OpenAI usage:
+- Quick test (dev-only): set `OPENAI_API_KEY` as an **environment variable** and Vite will proxy `/api/generate` to OpenAI automatically (no extra server required):
+
+  ```bash
+  OPENAI_API_KEY=sk-... npm run dev
+  ```
+
+- Production / safer approach: run the server process which exposes `/api/generate` and uses `OPENAI_API_KEY` from the server env (recommended for not exposing keys to the browser):
+
+  ```bash
+  OPENAI_API_KEY=sk-... npm run server
+  # then open http://localhost:3002 and the frontend will call /api/generate
+  ```
+
 4. (Opcional) Execute os testes:
    `npm test`
 

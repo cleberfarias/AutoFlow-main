@@ -12,6 +12,7 @@ interface TestChatProps {
   steps: WorkflowStep[];
   onClose: () => void;
   onStepActive: (id: string | null) => void;
+  onApiError?: (n?: number) => void;
 }
 
 interface Message {
@@ -25,7 +26,7 @@ interface Message {
   };
 }
 
-const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => {
+const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApiError }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -143,31 +144,15 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive }) => 
 
     onStepActive(trigger.id);
 
-    const openai = getOpenAI();
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: 'system',
-            content: `Você é o motor de execução AutoFlow. Seu objetivo é SIMULAR uma conversa real entre a automação e o cliente final.
-
-FLUXO ATUAL: ${JSON.stringify(steps)}
-PASSO INICIAL: "${trigger.title}"
-
-REGRAS DE OURO:
-1. Fale como se fosse o bot/automação configurada.
-2. Se o nó atual for um TRIGGER que espera mensagem, diga "Olá" e pergunte o que o usuário deseja.
-3. Se for um nó de DATA, simule que salvou a informação e conte ao usuário.
-4. Retorne SEMPRE um JSON válido no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`
-          },
-          { role: 'user', content: 'Inicie a simulação.' }
-        ]
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps, userMessage: 'Inicie a simulação.' })
       });
-
-      const raw = response.choices[0]?.message?.content || "{}";
-      const data = parseJson(raw) || {};
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'simulate_failed');
+      const payload = await res.json();
+      const data = payload?.result || {};
 
       // Se o assistant solicitou uma ação (DATA/ACTION), execute localmente como POC
       if (data.actionName) {
@@ -192,6 +177,29 @@ REGRAS DE OURO:
             data.actionDescription = 'Payload incompleto para createAppointment';
           }
         }
+
+        // New: call configured API on a node
+        if (data.actionName === 'call_api') {
+          const stepId = (data.actionPayload && data.actionPayload.stepId) || data.stepId;
+          const step = steps.find(s => s.id === stepId);
+          if (step && step.params?.api) {
+            try {
+              const apiPayload = step.params.api;
+              const resp = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api: apiPayload, variables: { ...(data.actionPayload?.variables || {}), ...variables } }) });
+              const json = await resp.json();
+              if (!resp.ok) {
+                data.actionDescription = `Erro na chamada externa: ${json?.message || json?.error || resp.status}`;
+              } else {
+                data.actionDescription = `Chamada externa OK (status ${json.status})`;
+                data.newVariables = { ...(data.newVariables || {}), ...(json.outputs || {}) };
+              }
+            } catch (err) {
+              data.actionDescription = `Erro ao executar API: ${err?.message || String(err)}`;
+            }
+          } else {
+            data.actionDescription = 'API não configurada para o passo indicado';
+          }
+        }
       }
 
       setVariables(prev => ({ ...prev, ...(data.newVariables || {}) }));
@@ -201,8 +209,30 @@ REGRAS DE OURO:
         stepId: data.stepId,
         techLog: { action: data.actionName, description: data.actionDescription }
       }]);
-      setChatHistory([{ role: 'assistant', content: raw }]);
-    } catch (err) {
+      setChatHistory([{ role: 'assistant', content: JSON.stringify(data) }]);
+
+      // If the current step has an API configured, call it and map outputs
+      try {
+        const stepApi = (trigger && trigger.params && (trigger.params as any).api) || null;
+        if (stepApi && stepApi.url) {
+          const res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api: stepApi, variables }) });
+          const body = await res.json().catch(() => null);
+          if (res.ok && body) {
+            const out = body.outputs || {};
+            // apply outputs to variables and show techLog
+            setVariables(prev => ({ ...prev, ...out }));
+            setMessages(prev => [...prev, { role: 'assistant', content: `Resultado da API: ${JSON.stringify(out)}`, techLog: { action: 'api_call', description: stepApi.url } }]);
+          } else {
+            if (onApiError) onApiError(1);
+            setMessages(prev => [...prev, { role: 'assistant', content: `Erro ao chamar API: ${body?.message || 'unknown'}`, techLog: { action: 'api_call', description: stepApi.url } }]);
+          }
+        }
+      } catch (err) {
+        console.error('api call in startSimulation failed', err);
+      }
+    } catch (err: any) {
+      console.error('startSimulation error', err);
+      setError(err?.message || 'Erro ao iniciar simulação');
       setMessages([{ role: 'assistant', content: "Olá! O fluxo foi iniciado. Como posso te ajudar hoje?" }]);
     } finally {
       setIsTyping(false);
@@ -217,32 +247,37 @@ REGRAS DE OURO:
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsTyping(true);
 
-    const openai = getOpenAI();
     const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
 
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: 'system',
-            content: `CONTEXTO DO FLUXO: ${JSON.stringify(steps)}.
-VARIÁVEIS ATUAIS: ${JSON.stringify(variables)}.
-
-Sua tarefa:
-1. Analise em qual passo estamos.
-2. Responda como a automação configurada.
-3. Se capturar dados novos, inclua em 'newVariables'.
-Responda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`
-          },
-          ...newHistory
-        ]
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps, userMessage: userMsg, variables, history: newHistory })
       });
-
-      const raw = response.choices[0]?.message?.content || "{}";
-      const data = parseJson(raw) || {};
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'simulate_failed');
+      const payload = await res.json();
+      const data = payload?.result || {};
       if (data.stepId) onStepActive(data.stepId);
+
+      // If the step referenced by the assistant has API config, call proxy
+      try {
+        const step = steps.find(s => s.id === data.stepId);
+        const stepApi = step?.params?.api || null;
+        if (stepApi && stepApi.url) {
+          const res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api: stepApi, variables }) });
+          const body = await res.json().catch(() => null);
+          if (res.ok && body) {
+            const out = body.outputs || {};
+            if (out) setVariables(prev => ({ ...prev, ...out }));
+            setMessages(prev => [...prev, { role: 'assistant', content: `Resultado da API: ${JSON.stringify(out)}`, techLog: { action: 'api_call', description: stepApi.url } }]);
+          } else {
+            setMessages(prev => [...prev, { role: 'assistant', content: `Erro ao chamar API: ${body?.message || 'unknown'}`, techLog: { action: 'api_call', description: stepApi.url } }]);
+          }
+        }
+      } catch (err) {
+        console.error('api proxy call failed', err);
+      }
 
       // se veio uma ação, execute localmente como POC
       if (data.actionName) {
@@ -275,9 +310,10 @@ Responda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","ac
         role: 'assistant', content: data.userMessage, stepId: data.stepId,
         techLog: { action: data.actionName, description: data.actionDescription }
       }]);
-      setChatHistory([...newHistory, { role: 'assistant', content: raw }]);
-    } catch (err) {
-      console.error(err);
+      setChatHistory([...newHistory, { role: 'assistant', content: JSON.stringify(data) }]);
+    } catch (err: any) {
+      console.error('handleSend error', err);
+      setError(err?.message || 'Erro na simulação');
     } finally {
       setIsTyping(false);
     }

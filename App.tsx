@@ -55,6 +55,24 @@ const App: React.FC = () => {
   const groupingRef = useRef<{startX:number,startY:number,active:boolean}|null>(null);
   const GRID_SIZE = 20;
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+
+  // Guided nodes: keep track of unlocked steps (by id)
+  const [unlockedSteps, setUnlockedSteps] = useState<Set<string>>(new Set());
+
+  // Local UI metric: API errors count
+  const [apiErrors, setApiErrors] = useState(0);
+  const incrementApiErrors = (n = 1) => setApiErrors(v => v + n);
+
+  // Initialize unlocked steps when a workflow is loaded or changed
+  useEffect(() => {
+    if (!activeWorkflow) { setUnlockedSteps(new Set()); return; }
+    const first = activeWorkflow.steps?.[0]?.id;
+    const newSet = new Set<string>();
+    if (first) newSet.add(first);
+    // preserve already completed steps
+    activeWorkflow.steps.forEach(s => { if (s.isComplete) newSet.add(s.id); });
+    setUnlockedSteps(newSet);
+  }, [activeWorkflow]);
   
   const lastMousePos = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -522,7 +540,7 @@ const App: React.FC = () => {
       const placed = generated.map((s, idx) => ({ ...s, position: { x: 100 + (idx * 400), y: 150 + (idx % 2 * 100) } }));
       saveCurrentWorkflow(placed);
       setPromptValue('');
-    } catch (e) { console.error(e); }
+    } catch (e: any) { console.error(e); alert(e?.message || 'Erro ao gerar fluxo. Verifique o console.'); }
     finally { setIsGenerating(false); }
   };
 
@@ -549,9 +567,29 @@ const App: React.FC = () => {
               <textarea value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder="Descreva a automação..." className="w-full min-h-[140px] p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all text-sm font-medium leading-relaxed pr-14 shadow-sm" />
               <button onClick={toggleRecording} className={`absolute right-4 bottom-4 p-3 rounded-xl transition-all ${isRecording ? 'bg-rose-500 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{isRecording ? <MicOff size={18} /> : <Mic size={18} />}</button>
             </div>
-            <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-xl shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-50 transition-all">
-              {isGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Gerando...</> : <><Sparkles size={16} /> Atualizar Fluxo</>}
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-xl shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-50 transition-all">
+                {isGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Gerando...</> : <><Sparkles size={16} /> Atualizar Fluxo</>}
+              </button>
+              <button onClick={() => {
+                // add new step
+                if (!activeWorkflow) return;
+                const newStep = { id: Date.now().toString(), type: 'ACTION', title: 'Nova Etapa', description: '', params: {}, position: { x: 200, y: 200 } };
+                saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+              }} className="px-4 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-black transition-all">+ Nova Etapa</button>
+            </div>
+            <div className="pt-4 border-t border-slate-100">
+              <div className="mt-3 flex gap-2">
+                <button onClick={() => {
+                  // add example API config to first step
+                  if (!activeWorkflow || activeWorkflow.steps.length === 0) return alert('Nenhum passo disponivel');
+                  const updated = activeWorkflow.steps.map((s,i) => i===0 ? { ...s, params: { ...s.params, api: { url: 'https://httpbin.org/get', method: 'GET', headers: [{ name: 'Accept', value: 'application/json' }], timeoutMs: 5000, auth: { type: 'bearer', secretRef: 'ADVBOX_KEY' }, responseMapping: [{ jsonPath: 'url', outputKey: 'url' }] } } } : s);
+                  saveCurrentWorkflow(updated);
+                  alert('Exemplo de conexão adicionado ao primeiro passo. Abra o passo e clique em Testar.');
+                }} className="px-3 py-2 bg-blue-600 text-white rounded-xl">Aplicar exemplo de API</button>
+                <button onClick={() => { setApiErrors(0); alert('Contador de erros reiniciado'); }} className="px-3 py-2 bg-slate-100 rounded-xl">Resetar Erros</button>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
@@ -642,16 +680,29 @@ const App: React.FC = () => {
             <div style={{ position: 'absolute', left: selectionRect.x, top: selectionRect.y, width: selectionRect.width, height: selectionRect.height, border: '2px dashed rgba(245,158,11,0.8)', background: 'rgba(245,158,11,0.06)', borderRadius: 10, pointerEvents: 'none' }} />
           )}
 
-          {activeWorkflow.steps.map((step) => (
+          {activeWorkflow.steps.map((step, idx) => (
             <NodeCard
               key={step.id}
               step={step}
               isActive={activeStepId === step.id}
               isPanningMode={isSpacePressed || isPanning}
               isPreview={isPreview}
+              isLocked={!unlockedSteps.has(step.id)}
               onMove={(id, x, y) => moveStep(id, x, y)}
               onDelete={(id) => saveCurrentWorkflow(activeWorkflow.steps.filter(x => x.id !== id))}
               onEdit={setEditingStepId}
+              onApiError={incrementApiErrors}
+              onUpdate={(updated) => saveCurrentWorkflow(activeWorkflow.steps.map(s => s.id === updated.id ? updated : s))}
+              onComplete={(id) => {
+                // mark completed and unlock next
+                const updated = activeWorkflow.steps.map(s => s.id === id ? { ...s, isComplete: true, title: s.title || '' } : s);
+                saveCurrentWorkflow(updated);
+                const next = activeWorkflow.steps[idx+1];
+                if (next) {
+                  setUnlockedSteps(prev => new Set(prev).add(next.id));
+                  setActiveStepId(next.id);
+                }
+              }}
             />
           ))}
         </div>
@@ -714,7 +765,7 @@ const App: React.FC = () => {
         </div>
       </main>
       <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
-      {isTesting && <TestChat steps={activeWorkflow.steps} onClose={() => setIsTesting(false)} onStepActive={setActiveStepId} />}
+      {isTesting && <TestChat steps={activeWorkflow.steps} onClose={() => setIsTesting(false)} onStepActive={setActiveStepId} onApiError={incrementApiErrors} />}
       {editingStepId && <EditorModal step={activeWorkflow.steps.find(s => s.id === editingStepId)!} onClose={() => setEditingStepId(null)} onSave={(updated) => { saveCurrentWorkflow(activeWorkflow.steps.map(x => x.id === updated.id ? updated : x)); setEditingStepId(null); }} />}
     </div>
   );

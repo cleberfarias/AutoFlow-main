@@ -213,7 +213,180 @@ app.post('/api/poc/find-availability', (req, res) => {
   if (!slot) return res.json({ found: false });
   res.json({ found: true, suggestedStart: slot.start, suggestedEnd: slot.end });
 });
-// Metrics endpoint (protected)
+
+// Generate workflow from prompt (server-side, requires OPENAI_API_KEY in env)
+import OpenAI from 'openai';
+
+function parseJson(text) {
+  try { return JSON.parse(text); } catch {}
+  const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+
+const TYPE_LABELS = {
+  TRIGGER: 'Gatilho',
+  ACTION: 'Ação',
+  DATA: 'Dados',
+  LOGIC: 'Lógica',
+  ERROR_HANDLER: 'Erro'
+};
+
+app.post('/api/generate', async (req, res) => {
+  try {
+    const { prompt } = req.body || {};
+    if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' });
+
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um Consultor Sênior de Crescimento para PMEs brasileiros.
+
+Sua tarefa é desenhar o fluxo de trabalho ideal focado em LUCRO e ECONOMIA DE TEMPO.
+Use termos de NEGÓCIO claros.
+
+ESTRUTURA DOS NÓS:
+1. TRIGGER: O que inicia o processo (ex: "Recebeu Mensagem", "Novo Pedido").
+2. ACTION: Uma tarefa realizada (ex: "Calcular Desconto", "Enviar Notificação").
+3. DATA: Armazenar ou buscar info (ex: "Salvar na Planilha Financeira", "Consultar Estoque").
+4. LOGIC: Uma decisão (ex: "Cliente é VIP?", "Valor acima de R$100?").
+
+REGRAS:
+- 'inputs' e 'outputs' devem ter nomes legíveis por humanos (ex: ["valor_total", "data_entrega"]).
+- 'nextSteps' deve conectar os IDs corretamente para formar um fluxo lógico.
+Responda SOMENTE com JSON no formato { "steps": [...] }.`
+        },
+        { role: 'user', content: `Pedido do cliente: "${prompt}"` }
+      ]
+    });
+
+    const content = response.choices?.[0]?.message?.content || '';
+    const parsed = parseJson(content);
+    const steps = Array.isArray(parsed) ? parsed : (parsed?.steps || []);
+
+    const VALID_TYPES = ['TRIGGER','ACTION','DATA','LOGIC','ERROR_HANDLER'];
+    const normalized = steps.map(s => {
+      const type = VALID_TYPES.includes(s.type) ? s.type : 'ACTION';
+      return {
+        ...s,
+        type,
+        title: s.title || (TYPE_LABELS[type] || type),
+        description: s.description || '',
+        params: s.params || { inputs: [], outputs: [] },
+        nextSteps: s.nextSteps || []
+      };
+    });
+
+    res.json({ steps: normalized });
+  } catch (err) {
+    console.error('Error in /api/generate:', err);
+    res.status(500).json({ error: 'generate_failed', message: err.message || String(err) });
+  }
+});
+
+// Simulate given steps and optional userMessage using OpenAI on server
+app.post('/api/simulate', async (req, res) => {
+  try {
+    const { steps, userMessage, variables } = req.body || {};
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' });
+    const openai = new OpenAI({ apiKey });
+
+    const system = `Você é o motor de execução AutoFlow. Seu objetivo é SIMULAR uma conversa real entre a automação e o cliente final.\n\nFLUXO ATUAL: ${JSON.stringify(steps || [])}\n\nResponda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`;
+    const messages = [
+      { role: 'system', content: system },
+      { role: 'user', content: userMessage || 'Inicie a simulação.' }
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages
+    });
+
+    const content = response.choices?.[0]?.message?.content || '{}';
+    const parsed = parseJson(content);
+    if (!parsed) {
+      console.warn('server /api/simulate: model did not return JSON; using raw content as userMessage', content);
+      return res.json({ result: { userMessage: String(content || '').trim(), stepId: trigger?.id || null } });
+    }
+    res.json({ result: parsed });
+  } catch (err) {
+    console.error('Error in /api/simulate:', err);
+    res.status(500).json({ error: 'simulate_failed', message: err.message || String(err) });
+  }
+});
+// Proxy to call external APIs from the server. Replaces {{SECRET:NAME}} and {{var}} placeholders.
+app.post('/api/proxy', async (req, res) => {
+  try {
+    const { api, variables } = req.body || {};
+    if (!api || !api.url) return res.status(400).json({ error: 'api.url required' });
+
+    const u = new URL(api.url);
+    const host = u.hostname;
+    // Basic safety: block local addresses
+    if (host === 'localhost' || host === '127.0.0.1' || /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])/.test(host)) {
+      return res.status(403).json({ error: 'forbidden_host' });
+    }
+
+    const method = (api.method || 'GET').toUpperCase();
+
+    const headers = {};
+    (api.headers || []).forEach(h => {
+      let val = String(h.value || '');
+      // replace secret placeholders {{SECRET:NAME}}
+      val = val.replace(/\{\{SECRET:([\w_-]+)\}\}/g, (_, name) => process.env[name] || '');
+      // replace variables {{var}}
+      val = val.replace(/\{\{([\w_]+)\}\}/g, (_, v) => String((variables || {})[v] ?? ''));
+      if (h.name) headers[h.name] = val;
+    });
+
+    if (api.auth && api.auth.type === 'bearer' && api.auth.secretRef) {
+      const secret = process.env[api.auth.secretRef] || '';
+      headers['Authorization'] = `Bearer ${secret}`;
+    }
+
+    let body = undefined;
+    if (api.bodyTemplate && ['POST','PUT','PATCH','DELETE'].includes(method)) {
+      let tpl = String(api.bodyTemplate || '');
+      tpl = tpl.replace(/\{\{SECRET:([\w_-]+)\}\}/g, (_, name) => process.env[name] || '');
+      tpl = tpl.replace(/\{\{([\w_]+)\}\}/g, (_, v) => JSON.stringify((variables || {})[v] ?? '').replace(/^"|"$/g, ''));
+      try { body = JSON.parse(tpl); } catch { body = tpl; }
+    }
+
+    const controller = new AbortController();
+    const timeout = (api.timeoutMs && Number(api.timeoutMs)) || 5000;
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const fetchRes = await fetch(api.url, { method, headers, body: body && (typeof body === 'string' ? body : JSON.stringify(body)), signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    const text = await fetchRes.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+
+    const outputs = {};
+    (api.responseMapping || []).forEach(m => {
+      try {
+        const parts = (m.jsonPath || '').split('.');
+        let cur = json;
+        for (const p of parts) { if (cur == null) break; cur = cur[p]; }
+        outputs[m.outputKey] = cur == null ? text : cur;
+      } catch { outputs[m.outputKey] = text; }
+    });
+
+    res.json({ status: fetchRes.status, headers: Object.fromEntries(fetchRes.headers ? fetchRes.headers.entries() : []), body: json || text, outputs });
+  } catch (err) {
+    console.error('Error in /api/proxy:', err);
+    res.status(500).json({ error: 'proxy_failed', message: err.message || String(err) });
+  }
+});// Metrics endpoint (protected)
 app.get('/api/metrics', requireApiKey, async (req, res) => {
   try {
     const { getAll } = await import('../../server/metrics.js');

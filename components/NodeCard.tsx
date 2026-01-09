@@ -8,12 +8,16 @@ interface NodeCardProps {
   isActive?: boolean;
   isPanningMode?: boolean;
   isPreview?: boolean;
+  isLocked?: boolean; // locked until previous steps are completed
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
+  onComplete?: (id: string) => void; // called when node is confirmed/validated
+  onApiError?: (n?: number) => void; // notify app of api errors
+  onUpdate?: (updated: WorkflowStep) => void; // persist changes to step
 }
 
-const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPreview, onEdit, onDelete, onMove }) => {
+const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPreview, isLocked=false, onEdit, onDelete, onMove, onComplete, onApiError, onUpdate }) => {
   const [isDragging, setIsDragging] = useState(false);
   const offset = useRef({ x: 0, y: 0 });
 
@@ -75,10 +79,60 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
   const baseClasses = `NodeCard absolute bg-white rounded-[28px] border-[1.5px] transition-all p-0 select-none flex flex-col ${theme.border} ${theme.shadow}`;
   const sizeClasses = isPreview ? 'w-[260px] scale-95 opacity-95' : 'w-[360px]';
   const dragClasses = isDragging ? 'z-[100] scale-[1.03] cursor-grabbing' : 'z-10';
+  const lockedClasses = (isLocked && !isPreview) ? 'opacity-60 grayscale pointer-events-none' : '';
+
+
+  // Guided UI state
+  const [expanded, setExpanded] = useState(false);
+  const [title, setTitle] = useState(step.title || '');
+  const [description, setDescription] = useState(step.description || '');
+  const [inputs, setInputs] = useState<string[]>(step.params?.inputs || []);
+  const [outputs, setOutputs] = useState<string[]>(step.params?.outputs || []);
+  const [condition, setCondition] = useState(step.params?.condition || '');
+  const [isCompleteLocal, setIsCompleteLocal] = useState(!!step.isComplete);
+  const [apiConnected, setApiConnected] = useState<boolean>(!!step.params?.api?.lastTestSuccess);
+
+  React.useEffect(() => {
+    setTitle(step.title || '');
+    setDescription(step.description || '');
+    setInputs(step.params?.inputs || []);
+    setOutputs(step.params?.outputs || []);
+    setCondition(step.params?.condition || '');
+    setIsCompleteLocal(!!step.isComplete);
+    setApiConnected(!!step.params?.api?.lastTestSuccess);
+  }, [step]);
+
+  // determine required fields by type (defaults unless provided)
+  const requiredFields = step.requiredFields || (step.type === StepType.TRIGGER ? ['title'] : step.type === StepType.ACTION ? ['title','outputs'] : step.type === StepType.LOGIC ? ['title','condition'] : ['title']);
+
+  const validate = () => {
+    try {
+      for (const f of requiredFields) {
+        if (f === 'title' && !title.trim()) return false;
+        if (f === 'outputs' && (!outputs || outputs.length === 0 || outputs.every(o => !o.trim()))) return false;
+        if (f === 'condition' && !condition.trim()) return false;
+      }
+      return true;
+    } catch { return false; }
+  };
+
+  // when valid, call onComplete and persist
+  React.useEffect(() => {
+    if (expanded && validate() && !isCompleteLocal) {
+      setIsCompleteLocal(true);
+      if (onComplete) onComplete(step.id);
+      setExpanded(false);
+    }
+  }, [expanded, title, description, inputs, outputs, condition]);
+
+  const toggleExpand = () => {
+    if (isLocked) return; // can't open locked nodes
+    setExpanded(e => !e);
+  };
 
   return (
     <div
-      className={`${baseClasses} ${sizeClasses} ${dragClasses}`}
+      className={`${baseClasses} ${sizeClasses} ${dragClasses} ${lockedClasses}`}
       style={{ left: pos.x, top: pos.y }}
       onMouseDown={handleMouseDown}
     >
@@ -88,7 +142,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
 
       <div className={`p-6 ${isPreview ? 'p-4' : ''}`}>
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-3 ${lockedClasses}`} onClick={() => { if (!isLocked) toggleExpand(); }}>
             <div className={`w-11 h-11 ${theme.accent} rounded-2xl flex items-center justify-center shadow-lg ${isPreview ? 'w-10 h-10' : ''}`}>
               <Icon size={isPreview ? 16 : 18} className="text-white" fill={step.type === StepType.TRIGGER ? 'currentColor' : 'none'} />
             </div>
@@ -98,6 +152,9 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
                   <Icon size={16} className="text-white" />
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{step.type}</span>
+                {step.params?.api && (
+                  <div className="ml-2 px-2 py-1 rounded-md text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-100">API</div>
+                )}
               </div>
               <h3 className={`text-slate-900 font-extrabold ${isPreview ? 'text-sm' : 'text-base'} leading-tight`}>{step.title || 'Sem título'}</h3>
             </div>
@@ -109,19 +166,111 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
         </div>
        
         <div className="flex items-center gap-3 text-[10px] font-bold text-slate-400">
-          <div className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">{step.params?.inputs?.[0] || 'Entrada'}</div>
+          <div className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">{inputs?.[0] || 'Entrada'}</div>
           <ArrowRight size={12} />
-          <div className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 text-blue-500">{step.params?.outputs?.[0] || 'Saída'}</div>
+          <div className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 text-blue-500">{outputs?.[0] || 'Saída'}</div>
         </div>
+
+        <div className="p-4 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-slate-500">{step.helpText || (step.type === StepType.ACTION ? 'Especifique o que essa ação faz e quais saídas ela produz.' : step.type === StepType.TRIGGER ? 'O que inicia este fluxo? Ex: "Recebeu Mensagem".' : step.type === StepType.LOGIC ? 'Qual condição determina o caminho?' : 'Descreva este passo.')}</div>
+            {isCompleteLocal ? (<div className="text-xs text-emerald-600 font-bold">Completo ✓</div>) : (isLocked ? (<div className="text-xs text-slate-300 font-bold">Bloqueado 🔒</div>) : (<div className="text-xs text-amber-500 font-bold">Aberto</div>))}
+          </div>
+
+          {/* Expandable details (prototype) */}
+          {expanded && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-500">Título <span className="text-rose-500">*</span></label>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full mt-1 p-3 rounded-lg border border-slate-100" />
+              </div>
+
+              {step.type === StepType.LOGIC && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500">Condição <span className="text-rose-500">*</span></label>
+                  <input value={condition} onChange={(e) => setCondition(e.target.value)} className="w-full mt-1 p-3 rounded-lg border border-slate-100" placeholder="ex: valor_total > 100" />
+                </div>
+              )}
+
+              {step.type === StepType.ACTION && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500">Saídas (outputs) <span className="text-rose-500">*</span></label>
+                  <div className="mt-1 flex flex-col gap-2">
+                    {outputs.map((o, idx) => (
+                      <input key={idx} value={o} onChange={(e) => setOutputs(outputs.map((v,i) => i===idx ? e.target.value : v))} className="w-full p-3 rounded-lg border border-slate-100" />
+                    ))}
+                    <button onClick={() => setOutputs(o => [...o, ''])} className="text-sm text-blue-600 font-bold">+ Adicionar saída</button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-500">Descrição</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full mt-1 p-3 rounded-lg border border-slate-100" />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-slate-400">Campos obrigatórios: {requiredFields.join(', ')}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setExpanded(false); }} className="px-3 py-2 rounded-lg border text-sm">Fechar</button>
+                  <button onClick={() => { /* manual confirm fallback */
+                    if (validate()) { setIsCompleteLocal(true); if (onComplete) onComplete(step.id); setExpanded(false); } else { alert('Preencha todos os campos obrigatórios.'); }
+                  }} className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm">Confirmar</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {step.params?.api && (
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-sm font-bold text-slate-600">API: <span className="font-mono text-xs text-slate-500">{(step.params.api.url || '').replace(/^https?:\/\//,'')}</span></div>
+            <div className="flex items-center gap-2">
+              {apiConnected ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <div className="text-sm text-emerald-600 font-bold">Conectado</div>
+                  <button onClick={async () => {
+                    try {
+                      const res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api: step.params.api, variables: {} }) });
+                      const json = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        if (onApiError) onApiError(1);
+                        throw new Error(json?.message || JSON.stringify(json));
+                      }
+                      alert('Resposta: ' + (typeof json.body === 'string' ? json.body : JSON.stringify(json.body)));
+                    } catch (err: any) { if (onApiError) onApiError(1); alert('Erro ao testar API: ' + (err?.message || String(err))); }
+                  }} className="px-3 py-2 bg-slate-100 rounded-xl text-sm">Retestar</button>
+                  <button onClick={() => onEdit(step.id)} className="px-3 py-2 bg-white border border-slate-100 rounded-xl text-sm">Editar</button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={async () => {
+                    try {
+                      const res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api: step.params.api, variables: {} }) });
+                      const json = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        if (onApiError) onApiError(1);
+                        throw new Error(json?.message || JSON.stringify(json));
+                      }
+                      // persist connected state if parent supports onUpdate
+                      if ((onUpdate as any) && typeof onUpdate === 'function') {
+                        onUpdate({ ...step, params: { ...step.params, api: { ...step.params.api, lastTestSuccess: true } } });
+                      }
+                      setApiConnected(true);
+                      alert('Resposta: ' + (typeof json.body === 'string' ? json.body : JSON.stringify(json.body)));
+                    } catch (err: any) { if (onApiError) onApiError(1); alert('Erro ao testar API: ' + (err?.message || String(err))); }
+                  }} className="px-3 py-2 bg-slate-100 rounded-xl text-sm">Testar API</button>
+                  <button onClick={() => onEdit(step.id)} className="px-3 py-2 bg-white border border-slate-100 rounded-xl text-sm">Editar</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {step.params?.url && (
-        <div className={`bg-[#0f172a] p-5 rounded-b-[27px] mx-[1px] mb-[1px] ${isPreview ? 'p-3' : ''}`}>
-          <div className="font-mono text-[11px] text-blue-300/80 break-all leading-relaxed bg-black/30 p-3 rounded-xl border border-white/5">
-            {step.params.url}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

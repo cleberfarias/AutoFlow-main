@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import LRU from "lru-cache";
+import cosineSimilarity from "compute-cosine-similarity";
 
 export type Intent = {
   id: string;
@@ -18,7 +20,7 @@ export type IntentMatch = {
 };
 
 let INTENTS: Intent[] | null = null;
-let EMBEDDINGS_CACHE: Record<string, number[]> | null = null;
+let EMBEDDINGS_CACHE: LRU<string, number[]> | null = null;
 
 function loadIntents(): Intent[] {
   if (INTENTS) return INTENTS;
@@ -51,44 +53,57 @@ function simpleWordOverlapScore(a: string, b: string) {
 }
 
 async function computeEmbeddingsIfNeeded() {
-  if (EMBEDDINGS_CACHE) return EMBEDDINGS_CACHE;
+  // If we already populated an LRU cache, return a plain object view to keep callers compatible
+  if (EMBEDDINGS_CACHE) {
+    const obj: Record<string, number[]> = {};
+    EMBEDDINGS_CACHE.forEach((v, k) => (obj[k] = v));
+    if (Object.keys(obj).length > 0) return obj;
+  }
   // During tests we skip external embedding calls to keep tests fast and deterministic
-  if (process.env.NODE_ENV === "test") return (EMBEDDINGS_CACHE = null);
+  if (process.env.NODE_ENV === "test") { EMBEDDINGS_CACHE = null; return null; }
   const apiKey = (process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
-  if (!apiKey) return (EMBEDDINGS_CACHE = null);
+  if (!apiKey) { EMBEDDINGS_CACHE = null; return null; }
   try {
     const { getOpenAI } = await import("./openaiClient");
     const openai = getOpenAI();
     const intents = loadIntents();
-    EMBEDDINGS_CACHE = {};
+    EMBEDDINGS_CACHE = new LRU<string, number[]>({ max: 5000 });
     for (const it of intents) {
       for (const ex of it.examples) {
         const key = `${it.id}:::${ex}`;
         try {
           const res = await openai.embeddings.create({ model: "text-embedding-3-small", input: ex });
           const emb = res.data[0].embedding as number[];
-          EMBEDDINGS_CACHE[key] = emb;
+          EMBEDDINGS_CACHE.set(key, emb);
         } catch (err) {
           // skip if embedding fails
         }
       }
     }
-    return EMBEDDINGS_CACHE;
+    const obj: Record<string, number[]> = {};
+    EMBEDDINGS_CACHE.forEach((v, k) => (obj[k] = v));
+    return obj;
   } catch (err) {
     return null;
   }
 }
 
 function cosine(a: number[], b: number[]) {
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
+  try {
+    // use library for consistent behavior
+    return (cosineSimilarity(a, b) as number) || 0;
+  } catch {
+    // fallback to manual implementation
+    let dot = 0;
+    let na = 0;
+    let nb = 0;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
   }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
 export async function detectIntent(text: string): Promise<IntentMatch> {
