@@ -418,6 +418,73 @@ app.post('/api/admin/tags/:chatId', requireApiKey, async (req, res) => {
   }
 });
 
+// ChatGuru apply forwarding endpoint
+app.post('/api/autoflow/apply', async (req, res) => {
+  try {
+    const { bot_id: botId, patch, mode = 'draft' } = req.body || {};
+    if (!botId || !patch) return res.status(400).json({ error: 'bot_id and patch required' });
+
+    const base = process.env.CHATGURU_BASE_URL;
+    const apiKey = process.env.CHATGURU_API_KEY;
+
+    // If ChatGuru not configured, act as a local stub (applied)
+    if (!base) return res.json({ ok: true, applied: true });
+
+    // Prepare transformed patch (add link-based contexts and entry conditions)
+    const transformed = JSON.parse(JSON.stringify(patch || {}));
+    if (Array.isArray(transformed.links) && Array.isArray(transformed.dialogs)) {
+      for (const link of transformed.links) {
+        const srcNode = link.source_node;
+        const tgtNode = link.target_node;
+        const src = transformed.dialogs.find(d => d.dialog_node === srcNode);
+        const tgt = transformed.dialogs.find(d => d.dialog_node === tgtNode);
+        if (src) {
+          src.context = src.context || {};
+          src.context[`${srcNode}__${tgtNode}`] = true;
+        }
+        if (tgt) {
+          tgt.conditions_entry_contexts = tgt.conditions_entry_contexts || [];
+          const cond = `$${srcNode}__${tgtNode}==True`;
+          if (!tgt.conditions_entry_contexts.includes(cond)) tgt.conditions_entry_contexts.push(cond);
+        }
+      }
+    }
+
+    const url = `${String(base || '').replace(/\/$/, '')}/api/autoflow/apply`;
+    const maxRetries = Math.max(1, Number(process.env.CHATGURU_MAX_RETRIES || 1));
+    const baseMs = Math.max(1, Number(process.env.CHATGURU_RETRY_BASE_MS || 1000));
+
+    let attempt = 0;
+    let lastErr = null;
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ bot_id: botId, patch: transformed, mode }) });
+        if (r.ok) {
+          let body = null;
+          try { body = await r.json(); } catch { body = await r.text(); }
+          return res.json({ ok: true, forwarded: true, result: body });
+        }
+        lastErr = new Error(`ChatGuru returned status ${r.status}`);
+      } catch (err) {
+        lastErr = err;
+      }
+      // backoff
+      if (attempt < maxRetries) {
+        const wait = baseMs * Math.pow(2, attempt - 1);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+
+    return res.status(502).json({ ok: false, error: 'chatguru_failed', message: lastErr?.message || 'unknown' });
+  } catch (err) {
+    console.error('Error in /api/autoflow/apply:', err);
+    res.status(500).json({ error: 'apply_failed', message: String(err) });
+  }
+});
+
 app.delete('/api/admin/tags/:chatId/:tag', requireApiKey, async (req, res) => {
   try {
     const { removeTag } = await import('../../server/tags.js');
