@@ -33,9 +33,27 @@ Passos essenciais:
    - `docker build -t local/autoflow:dev .`
    - `docker run -p 3333:3333 -v $(pwd)/.local-whatsapp:/data/whatsapp local/autoflow:dev`
 
-Se quiser, posso fazer um commit final com uma branch e abrir um PR contendo:
-- `Dockerfile` (adicionado)
-- `.github/workflows/render-deploy.yml` (adicionado)
-- `DEPLOY.md` (documentação)
+---
 
-Quer que eu faça o commit + push para criar um PR? (recomendado)
+## Postgres e Migração de dados
+
+Recomendo usar Postgres para produção e testes de integração. Abaixo estão os passos rápidos para configurar e rodar a migração localmente e no CI:
+
+- Variável de ambiente requerida:
+  - `DATABASE_URL` (ex: `postgres://postgres:postgres@localhost:5432/autoflow`)
+
+- Gerar client e aplicar schema (local/dev):
+  - `npx prisma generate --schema=prisma/schema.prisma`
+  - `npx prisma db push --schema=prisma/schema.prisma`
+
+- Migrar dados existentes de `data/db.json` para o banco:
+  - `npm run migrate:prisma:postgres` (este script importa `pendingConfirmations` e `storage` para Postgres via Prisma)
+
+- Rollback (reverte as entradas migradas a partir de `data/db.json`):
+  - `npm run rollback:migrate:postgres`
+
+> Observação: Na CI, já adicionamos um workflow (`.github/workflows/postgres-integration.yml`) que inicializa um serviço Postgres, aplica o schema e executa `npm run migrate:prisma:postgres` antes de rodar os testes.
+
+---
+
+Se quiser, posso abrir PR com mudanças extras (ex.: adicionar migration logs, checks e um job de migração segura).
