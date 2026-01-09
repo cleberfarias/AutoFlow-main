@@ -24,8 +24,11 @@ let EMBEDDINGS_CACHE: LRU<string, number[]> | null = null;
 
 function loadIntents(): Intent[] {
   if (INTENTS) return INTENTS;
-  const p = path.resolve(process.cwd(), "data/intents.json");
-  if (!fs.existsSync(p)) {
+  const primary = path.resolve(process.cwd(), "data/intents.json");
+  const fallback = path.resolve(process.cwd(), "fixtures", "intents.json");
+
+  const p = fs.existsSync(primary) ? primary : (fs.existsSync(fallback) ? fallback : null);
+  if (!p) {
     INTENTS = [];
     return INTENTS;
   }

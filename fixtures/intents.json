@@ -1,0 +1,24 @@
+{
+  "intents": [
+    {
+      "id": "greeting",
+      "name": "Greeting",
+      "examples": ["Oi", "Olá", "Bom dia"]
+    },
+    {
+      "id": "price_query",
+      "name": "Price Query",
+      "examples": ["Qual o preço do produto?", "Qual o preço"]
+    },
+    {
+      "id": "support_request",
+      "name": "Support Request",
+      "examples": ["Preciso de ajuda", "Meu pedido não chegou"]
+    },
+    {
+      "id": "move_to_sales",
+      "name": "Move to Sales",
+      "examples": ["mover para vendas", "levar para vendas"]
+    }
+  ]
+}
