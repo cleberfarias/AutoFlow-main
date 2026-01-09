@@ -26,6 +26,7 @@
     "lowdb": "^5.0.0",
     "lru-cache": "^11.2.4",
     "lucide-react": "^0.562.0",
+    "multer": "^2.0.2",
     "openai": "^4.104.0",
     "qrcode-terminal": "^0.12.0",
     "react": "^19.2.3",

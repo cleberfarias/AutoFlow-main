@@ -1,5 +1,3 @@
-import { getOpenAI } from "./openaiClient";
-
 export type LLMResponseOptions = {
   model?: string;
   maxTokens?: number;
@@ -7,21 +5,19 @@ export type LLMResponseOptions = {
 };
 
 export async function generateResponse(prompt: string, opts: LLMResponseOptions = {}): Promise<string> {
-  const model = opts.model || "gpt-4o-mini";
-  const openai = getOpenAI();
+  // Use backend endpoint to perform LLM calls safely on server
   try {
-    const messages = [];
-    if (opts.systemPrompt) messages.push({ role: "system", content: opts.systemPrompt });
-    messages.push({ role: "user", content: prompt });
-
-    const response = await openai.chat.completions.create({
-      model,
-      messages,
-      max_tokens: opts.maxTokens || 350
+    const res = await fetch('/api/autoflow/llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, opts })
     });
-    return response.choices[0]?.message?.content || "";
+    if (res.ok) {
+      const data = await res.json();
+      return data?.response || '';
+    }
   } catch (err) {
-    console.error("llmResponder error:", err);
-    return "";
+    console.warn('LLM endpoint unavailable', err);
   }
+  return '';
 }
