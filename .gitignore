@@ -28,3 +28,4 @@ data
 sessions
 *.db
 *.sqlite
+.env

@@ -12,6 +12,10 @@ import EditorModal from './components/EditorModal';
 import TestChat from './components/TestChat';
 import NameModal from './components/NameModal';
 import LegendPanel from './components/LegendPanel';
+import Navbar from './components/Navbar';
+import Dashboard from './components/Dashboard';
+import WorkflowsPage from './components/WorkflowsPage';
+import GenericPage from './components/GenericPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
@@ -25,6 +29,7 @@ import { compileToChatIA } from './src/adapters/chatia/compile';
 
 const App: React.FC = () => {
   // Estados de Navegação e Dados
+  const [currentPage, setCurrentPage] = useState('dashboard');
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const [activeWorkflow, setActiveWorkflow] = useState<Workflow | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
@@ -38,6 +43,7 @@ const App: React.FC = () => {
     defaultValue: string;
     type: 'CLIENT' | 'AUTOMATION' | 'RENAME_AUTOMATION';
     id?: string;
+    clientId?: string; // Para associar workflow a um cliente específico
   }>({
     isOpen: false,
     title: '',
@@ -336,7 +342,7 @@ const App: React.FC = () => {
   };
 
   const handleConfirmNaming = (name: string) => {
-    const { type, id } = namingModal;
+    const { type, id, clientId } = namingModal;
     
     if (type === 'CLIENT') {
       const newClient: Client = {
@@ -349,7 +355,23 @@ const App: React.FC = () => {
       saveToDB(updated);
       setActiveClient(newClient);
     } 
-    else if (type === 'AUTOMATION' && activeClient) {
+    else if (type === 'AUTOMATION') {
+      // Se tiver clientId, usa ele; senão usa activeClient; senão cria um cliente padrão
+      let targetClient = clientId ? clients.find(c => c.id === clientId) : activeClient;
+      
+      if (!targetClient) {
+        // Se não há cliente, cria um cliente padrão
+        targetClient = {
+          id: Date.now().toString(),
+          name: 'Cliente Padrão',
+          email: 'padrao@email.com',
+          automations: []
+        };
+        const updatedClientsWithNew = [...clients, targetClient];
+        saveToDB(updatedClientsWithNew);
+        setActiveClient(targetClient);
+      }
+      
       const newWorkflow: Workflow = {
         id: Date.now().toString(),
         name,
@@ -357,10 +379,13 @@ const App: React.FC = () => {
         steps: []
       };
       const updatedClient = {
-        ...activeClient,
-        automations: [...activeClient.automations, newWorkflow]
+        ...targetClient,
+        automations: [...targetClient.automations, newWorkflow]
       };
-      const updatedClients = clients.map(c => c.id === activeClient.id ? updatedClient : c);
+      const updatedClients = clients.map(c => c.id === targetClient.id ? updatedClient : c);
+      if (!clients.find(c => c.id === targetClient.id)) {
+        updatedClients.push(updatedClient);
+      }
       saveToDB(updatedClients);
       setActiveClient(updatedClient);
       setActiveWorkflow(newWorkflow);
@@ -450,45 +475,43 @@ const App: React.FC = () => {
   };
 
   // Views
+  const renderPageContent = () => {
+    // Prepare workflow list from all clients
+    const allWorkflows = clients.flatMap(c => c.automations.map(auto => ({ ...auto, clientName: c.name })));
+
+    switch (currentPage) {
+      case 'dashboard':
+        return <Dashboard clients={clients} workflows={allWorkflows} />;
+      case 'workflows':
+        return <WorkflowsPage 
+          workflows={allWorkflows} 
+          onCreateWorkflow={() => handleOpenNamingModal('AUTOMATION')}
+          onSelectWorkflow={(workflow) => {
+            const client = clients.find(c => c.automations.some(a => a.id === workflow.id));
+            if (client) {
+              setActiveClient(client);
+              setActiveWorkflow(workflow);
+            }
+          }}
+        />;
+      case 'ai-routing':
+      case 'mcp-hub':
+      case 'templates':
+      case 'versions':
+      case 'logs':
+        return <GenericPage title={currentPage} description={`Página de ${currentPage}`} />;
+      default:
+        return <Dashboard clients={clients} workflows={allWorkflows} />;
+    }
+  };
+
   if (!activeClient) {
     const filteredClients = clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-4xl space-y-8 animate-in fade-in zoom-in duration-500">
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 text-white mx-auto mb-6 rotate-3">
-              <Zap size={40} fill="currentColor" />
-            </div>
-            <h1 className="text-5xl font-black italic tracking-tighter text-slate-900 uppercase">AutoFlow <span className="text-blue-600 not-italic">Enterprise</span></h1>
-            <p className="text-slate-500 font-medium text-lg">Gerenciamento de fluxos inteligentes para PMEs.</p>
-          </div>
-          <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-slate-100 space-y-8">
-            <div className="relative group">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={24} />
-              <input 
-                type="text" placeholder="Buscar cliente..." 
-                className="w-full pl-16 pr-6 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-3xl outline-none text-xl font-bold transition-all shadow-inner"
-                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredClients.map(client => (
-                <button key={client.id} onClick={() => setActiveClient(client)} className="group flex items-center justify-between p-6 bg-white border-2 border-slate-50 hover:border-blue-500 rounded-3xl transition-all hover:shadow-xl text-left">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-all"><Users size={24} /></div>
-                    <div>
-                      <h3 className="font-black text-slate-900 text-lg group-hover:text-blue-600">{client.name}</h3>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{client.automations.length} Automações</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={20} className="text-slate-300 group-hover:translate-x-1 group-hover:text-blue-500 transition-all" />
-                </button>
-              ))}
-              <button onClick={() => handleOpenNamingModal('CLIENT')} className="flex items-center justify-center p-6 bg-blue-50 border-2 border-dashed border-blue-200 hover:border-blue-500 rounded-3xl transition-all group">
-                <div className="flex items-center gap-3 text-blue-600 font-black uppercase text-sm tracking-widest"><Plus size={20} /> Novo Cliente</div>
-              </button>
-            </div>
-          </div>
+      <div className="flex h-screen w-full bg-slate-900">
+        <Navbar currentPage={currentPage} onPageChange={setCurrentPage} />
+        <div className="ml-64 flex-1 bg-slate-900 overflow-y-auto">
+          {renderPageContent()}
         </div>
         <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
       </div>
@@ -497,48 +520,51 @@ const App: React.FC = () => {
 
   if (!activeWorkflow) {
     return (
-      <div className="min-h-screen bg-white flex flex-col font-sans">
-        <header className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setActiveClient(null)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24} /></button>
-            <div>
-              <h1 className="text-3xl font-black tracking-tighter text-slate-900">{activeClient.name}</h1>
-              <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md mt-1 block w-fit">Dash de Gestão</span>
+      <div className="flex h-screen w-full bg-slate-900">
+        <Navbar currentPage={currentPage} onPageChange={setCurrentPage} />
+        <div className="ml-64 flex-1 bg-slate-900 overflow-y-auto">
+          <header className="p-8 border-b border-slate-700 flex items-center justify-between bg-slate-800 sticky top-0 z-10">
+            <div className="flex items-center gap-6">
+              <button onClick={() => setActiveClient(null)} className="p-3 hover:bg-slate-700 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24} /></button>
+              <div>
+                <h1 className="text-3xl font-black tracking-tighter text-white">{activeClient.name}</h1>
+                <span className="text-[10px] font-black uppercase tracking-widest text-teal-400 bg-teal-950 px-2 py-0.5 rounded-md mt-1 block w-fit">Dash de Gestão</span>
+              </div>
             </div>
-          </div>
-          <button onClick={() => setActiveClient(null)} className="flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-100 transition-colors"><LogOut size={16} /> Sair</button>
-        </header>
-        <main className="flex-1 max-w-7xl w-full mx-auto p-12">
-          <div className="flex items-center justify-between mb-12">
-            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Minhas Automações</h2>
-            <button onClick={() => handleOpenNamingModal('AUTOMATION')} className="px-8 py-4 bg-blue-600 text-white rounded-[24px] font-black uppercase tracking-widest text-xs flex items-center gap-3 shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all">
-              <Plus size={18} strokeWidth={3} /> Criar Novo Fluxo
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {activeClient.automations.length > 0 ? activeClient.automations.map(auto => (
-              <div key={auto.id} className="group relative bg-slate-50 border-2 border-transparent hover:border-blue-200 rounded-[32px] p-8 transition-all hover:shadow-2xl hover:bg-white flex flex-col h-full">
-                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm mb-6 group-hover:scale-110 transition-transform"><FolderOpen size={24} /></div>
-                <h3 className="text-xl font-black text-slate-900 mb-2 leading-tight">{auto.name}</h3>
-                <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8">
-                  <div className="flex items-center gap-1.5"><Clock size={12} /> {new Date(auto.lastModified).toLocaleDateString()}</div>
-                  <div className="flex items-center gap-1.5"><Zap size={12} /> {auto.steps.length} Blocos</div>
+            <button onClick={() => setActiveClient(null)} className="flex items-center gap-2 px-6 py-3 bg-rose-950 text-rose-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-900 transition-colors"><LogOut size={16} /> Sair</button>
+          </header>
+          <main className="flex-1 max-w-7xl w-full mx-auto p-12">
+            <div className="flex items-center justify-between mb-12">
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Minhas Automações</h2>
+              <button onClick={() => handleOpenNamingModal('AUTOMATION')} className="px-8 py-4 bg-teal-600 text-white rounded-[24px] font-black uppercase tracking-widest text-xs flex items-center gap-3 shadow-2xl shadow-teal-500/30 hover:bg-teal-700 transition-all">
+                <Plus size={18} strokeWidth={3} /> Criar Novo Fluxo
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {activeClient.automations.length > 0 ? activeClient.automations.map(auto => (
+                <div key={auto.id} className="group relative bg-slate-800 border-2 border-slate-700 hover:border-teal-500 rounded-[32px] p-8 transition-all hover:shadow-2xl hover:shadow-teal-500/20 hover:bg-slate-750 flex flex-col h-full">
+                  <div className="w-14 h-14 bg-slate-700 rounded-2xl flex items-center justify-center text-teal-400 shadow-sm mb-6 group-hover:scale-110 transition-transform"><FolderOpen size={24} /></div>
+                  <h3 className="text-xl font-black text-white mb-2 leading-tight">{auto.name}</h3>
+                  <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8">
+                    <div className="flex items-center gap-1.5"><Clock size={12} /> {new Date(auto.lastModified).toLocaleDateString()}</div>
+                    <div className="flex items-center gap-1.5"><Zap size={12} /> {auto.steps.length} Blocos</div>
+                  </div>
+                  <div className="mt-auto flex gap-3 pt-6 border-t border-slate-700/50">
+                    <button onClick={() => setActiveWorkflow(auto)} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-teal-700 transition-colors">Abrir Editor</button>
+                    <button onClick={() => handleOpenNamingModal('RENAME_AUTOMATION', auto.id, auto.name)} className="p-3 bg-slate-700 border border-slate-600 text-slate-400 hover:text-teal-400 rounded-xl transition-colors"><Pencil size={16} /></button>
+                    <button onClick={() => deleteWorkflow(auto.id)} className="p-3 bg-slate-700 border border-slate-600 text-slate-400 hover:text-rose-400 rounded-xl transition-colors"><Trash2 size={16} /></button>
+                  </div>
                 </div>
-                <div className="mt-auto flex gap-3 pt-6 border-t border-slate-200/50">
-                  <button onClick={() => setActiveWorkflow(auto)} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 transition-colors">Abrir Editor</button>
-                  <button onClick={() => handleOpenNamingModal('RENAME_AUTOMATION', auto.id, auto.name)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-blue-500 rounded-xl transition-colors"><Pencil size={16} /></button>
-                  <button onClick={() => deleteWorkflow(auto.id)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-xl transition-colors"><Trash2 size={16} /></button>
+              )) : (
+                <div className="col-span-full py-24 border-4 border-dashed border-slate-700 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center text-slate-600"><Sparkles size={40} /></div>
+                  <h3 className="font-black text-white text-xl uppercase tracking-tighter">Nenhum fluxo encontrado</h3>
                 </div>
-              </div>
-            )) : (
-              <div className="col-span-full py-24 border-4 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300"><Sparkles size={40} /></div>
-                <h3 className="font-black text-slate-900 text-xl uppercase tracking-tighter">Nenhum fluxo encontrado</h3>
-              </div>
-            )}
-          </div>
-        </main>
-        <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
+              )}
+            </div>
+          </main>
+          <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
+        </div>
       </div>
     );
   }
@@ -556,16 +582,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans">
-      <aside className="w-[420px] border-r border-slate-200 bg-white flex flex-col shadow-2xl z-30">
-        <div className="p-8 border-b border-slate-50 bg-white text-slate-900">
-          <button onClick={() => setActiveWorkflow(null)} className="flex items-center gap-2 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:translate-x-[-4px] transition-transform mb-4"><ArrowLeft size={14} /> Painel</button>
+    <div className="flex h-screen w-full overflow-hidden bg-slate-900 font-sans">
+      <aside className="w-[420px] border-r border-slate-700 bg-slate-800 flex flex-col shadow-2xl z-30">
+        <div className="p-8 border-b border-slate-700 bg-slate-800 text-white">
+          <button onClick={() => setActiveWorkflow(null)} className="flex items-center gap-2 text-[10px] font-black text-teal-400 uppercase tracking-widest hover:translate-x-[-4px] transition-transform mb-4"><ArrowLeft size={14} /> Painel</button>
           <div className="flex items-center gap-4 group">
-            <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0"><Edit3 size={20} /></div>
+            <div className="w-12 h-12 bg-teal-600 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0"><Edit3 size={20} /></div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black tracking-tighter uppercase truncate leading-none">{activeWorkflow.name}</h1>
-                <button onClick={() => handleOpenNamingModal('RENAME_AUTOMATION', activeWorkflow.id, activeWorkflow.name)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-600 transition-all"><Pencil size={12} /></button>
+                <h1 className="text-xl font-black tracking-tighter uppercase truncate leading-none text-white">{activeWorkflow.name}</h1>
+                <button onClick={() => handleOpenNamingModal('RENAME_AUTOMATION', activeWorkflow.id, activeWorkflow.name)} className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-teal-400 transition-all"><Pencil size={12} /></button>
               </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 truncate">Cliente: {activeClient.name}</p>
             </div>
@@ -573,13 +599,13 @@ const App: React.FC = () => {
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
           <div className="space-y-4">
-            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Wand2 size={14} className="text-blue-500" /> Designer de IA</label>
+            <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Wand2 size={14} className="text-teal-500" /> Designer de IA</label>
             <div className="relative group">
-              <textarea value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder="Descreva a automação..." className="w-full min-h-[140px] p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all text-sm font-medium leading-relaxed pr-14 shadow-sm" />
-              <button onClick={toggleRecording} className={`absolute right-4 bottom-4 p-3 rounded-xl transition-all ${isRecording ? 'bg-rose-500 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{isRecording ? <MicOff size={18} /> : <Mic size={18} />}</button>
+              <textarea value={promptValue} onChange={(e) => setPromptValue(e.target.value)} placeholder="Descreva a automação..." className="w-full min-h-[140px] p-5 bg-slate-700 border-2 border-slate-600 rounded-2xl focus:border-teal-600 focus:bg-slate-750 outline-none transition-all text-sm font-medium leading-relaxed pr-14 shadow-sm text-white placeholder-slate-400" />
+              <button onClick={toggleRecording} className={`absolute right-4 bottom-4 p-3 rounded-xl transition-all ${isRecording ? 'bg-rose-500 text-white shadow-lg' : 'bg-slate-600 text-slate-300 hover:bg-slate-500'}`}>{isRecording ? <MicOff size={18} /> : <Mic size={18} />}</button>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-xl shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-50 transition-all">
+              <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="flex-1 py-4 bg-teal-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-xl shadow-teal-600/25 hover:bg-teal-700 disabled:opacity-50 transition-all">
                 {isGenerating ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Gerando...</> : <><Sparkles size={16} /> Atualizar Fluxo</>}
               </button>
               <button onClick={() => {
@@ -587,9 +613,9 @@ const App: React.FC = () => {
                 if (!activeWorkflow) return;
                 const newStep = { id: Date.now().toString(), type: 'ACTION', title: 'Nova Etapa', description: '', params: {}, position: { x: 200, y: 200 } };
                 saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
-              }} className="px-4 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-black transition-all">+ Nova Etapa</button>
+              }} className="px-4 py-4 bg-slate-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-slate-600 transition-all">+ Nova Etapa</button>
             </div>
-            <div className="pt-4 border-t border-slate-100">
+            <div className="pt-4 border-t border-slate-700">
               <div className="mt-3 flex gap-2">
                 <button onClick={() => {
                   // add example API config to first step
@@ -597,8 +623,8 @@ const App: React.FC = () => {
                   const updated = activeWorkflow.steps.map((s,i) => i===0 ? { ...s, params: { ...s.params, api: { url: 'https://httpbin.org/get', method: 'GET', headers: [{ name: 'Accept', value: 'application/json' }], timeoutMs: 5000, auth: { type: 'bearer', secretRef: 'ADVBOX_KEY' }, responseMapping: [{ jsonPath: 'url', outputKey: 'url' }] } } } : s);
                   saveCurrentWorkflow(updated);
                   alert('Exemplo de conexão adicionado ao primeiro passo. Abra o passo e clique em Testar.');
-                }} className="px-3 py-2 bg-blue-600 text-white rounded-xl">Aplicar exemplo de API</button>
-                <button onClick={() => { setApiErrors(0); alert('Contador de erros reiniciado'); }} className="px-3 py-2 bg-slate-100 rounded-xl">Resetar Erros</button>
+                }} className="px-3 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700">Aplicar exemplo de API</button>
+                <button onClick={() => { setApiErrors(0); alert('Contador de erros reiniciado'); }} className="px-3 py-2 bg-slate-700 text-slate-300 rounded-xl hover:bg-slate-600">Resetar Erros</button>
               </div>
             </div>
           </div>
@@ -606,7 +632,7 @@ const App: React.FC = () => {
       </aside>
       <main 
         ref={canvasRef}
-        className={`flex-1 relative overflow-hidden bg-slate-100/30 ${isPanning || isSpacePressed ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 relative overflow-hidden bg-slate-950 ${isPanning || isSpacePressed ? 'cursor-grabbing' : 'cursor-grab'}`}
         onPointerDown={handlePointerDown}
         onWheel={handleWheel}
         style={{ touchAction: 'none' }}
@@ -719,39 +745,39 @@ const App: React.FC = () => {
         </div>
         {activeWorkflow.steps.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-white/90 backdrop-blur-xl border border-white shadow-2xl rounded-[32px] p-10 w-full max-w-lg text-center space-y-4">
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto">
+            <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700 shadow-2xl rounded-[32px] p-10 w-full max-w-lg text-center space-y-4">
+              <div className="w-16 h-16 bg-teal-950 text-teal-400 rounded-2xl flex items-center justify-center mx-auto">
                 <Sparkles size={28} />
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Comece descrevendo sua automação</h3>
-              <p className="text-slate-500 text-sm">Use o painel à esquerda para gerar o fluxo. Você pode editar cada nó depois.</p>
-              <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-50 transition-all">
+              <h3 className="text-2xl font-black text-white">Comece descrevendo sua automação</h3>
+              <p className="text-slate-400 text-sm">Use o painel à esquerda para gerar o fluxo. Você pode editar cada nó depois.</p>
+              <button onClick={handleCreateSteps} disabled={isGenerating || !promptValue.trim()} className="inline-flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-teal-600/25 hover:bg-teal-700 disabled:opacity-50 transition-all">
                 <Sparkles size={14} /> Gerar Fluxo
               </button>
             </div>
           </div>
         )}
         {isGenerating && (
-          <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center">
-            <div className="flex items-center gap-3 bg-white shadow-xl rounded-2xl px-6 py-4 border border-slate-100">
-              <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-              <span className="text-sm font-bold text-slate-700">Gerando fluxo...</span>
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
+            <div className="flex items-center gap-3 bg-slate-800 shadow-xl rounded-2xl px-6 py-4 border border-slate-700">
+              <div className="w-4 h-4 border-2 border-teal-800 border-t-teal-500 rounded-full animate-spin" />
+              <span className="text-sm font-bold text-white">Gerando fluxo...</span>
             </div>
           </div>
         )}
-        <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-xl border border-white rounded-2xl px-4 py-3 shadow-xl text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {isGroupingMode ? (<span>Modo de Agrupamento: arraste para selecionar nós • clique novamente para cancelar</span>) : (<span>Dicas: segure <span className="text-slate-700">Space</span> para mover • role para zoom</span>)}
+        <div className="absolute top-6 left-6 bg-slate-800/90 backdrop-blur-xl border border-slate-700 rounded-2xl px-4 py-3 shadow-xl text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          {isGroupingMode ? (<span>Modo de Agrupamento: arraste para selecionar nós • clique novamente para cancelar</span>) : (<span>Dicas: segure <span className="text-teal-400">Space</span> para mover • role para zoom</span>)}
         </div>
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur-xl px-8 py-4 rounded-3xl shadow-2xl border border-white z-40">
-           <button onClick={() => setIsTesting(true)} disabled={activeWorkflow.steps.length === 0} className="px-8 py-3.5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:bg-black transition-all disabled:opacity-30"><Play size={16} fill="currentColor" /> Simular Fluxo</button>
-           <div className="flex gap-2 border-l border-slate-200 pl-4">
-             <button onClick={() => setViewTransform(p => ({...p, scale: Math.min(p.scale + 0.1, 1.5)}))} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><ZoomIn size={20}/></button>
-             <button onClick={() => setViewTransform(p => ({...p, scale: Math.max(p.scale - 0.1, 0.3)}))} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><ZoomOut size={20}/></button>
-             <button onClick={fitToWorkflow} className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><RotateCcw size={20}/></button>
-             <button onClick={() => { setIsPreview(p => !p); if (!isPreview) { fitToWorkflow(); } }} title={isPreview ? 'Sair do preview' : 'Entrar em modo de apresentação'} className={`p-3 rounded-xl transition-colors ${isPreview ? 'bg-blue-600 text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-blue-600'}`}>
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-800/90 backdrop-blur-xl px-8 py-4 rounded-3xl shadow-2xl border border-slate-700 z-40">
+           <button onClick={() => setIsTesting(true)} disabled={activeWorkflow.steps.length === 0} className="px-8 py-3.5 bg-teal-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:bg-teal-700 transition-all disabled:opacity-30"><Play size={16} fill="currentColor" /> Simular Fluxo</button>
+           <div className="flex gap-2 border-l border-slate-700 pl-4">
+             <button onClick={() => setViewTransform(p => ({...p, scale: Math.min(p.scale + 0.1, 1.5)}))} className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400"><ZoomIn size={20}/></button>
+             <button onClick={() => setViewTransform(p => ({...p, scale: Math.max(p.scale - 0.1, 0.3)}))} className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400"><ZoomOut size={20}/></button>
+             <button onClick={fitToWorkflow} className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400"><RotateCcw size={20}/></button>
+             <button onClick={() => { setIsPreview(p => !p); if (!isPreview) { fitToWorkflow(); } }} title={isPreview ? 'Sair do preview' : 'Entrar em modo de apresentação'} className={`p-3 rounded-xl transition-colors ${isPreview ? 'bg-teal-600 text-white' : 'hover:bg-slate-700 text-slate-400 hover:text-teal-400'}`}>
                {isPreview ? <><EyeOff size={18} /> </> : <><Eye size={18} /> </> }
              </button>
-             <button onClick={() => setIsGroupingMode(g => !g)} title={isGroupingMode ? 'Cancelar agrupamento' : 'Agrupar nós (arraste)'} className={`p-3 rounded-xl transition-colors ${isGroupingMode ? 'bg-amber-400 text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-amber-500'}`}>
+             <button onClick={() => setIsGroupingMode(g => !g)} title={isGroupingMode ? 'Cancelar agrupamento' : 'Agrupar nós (arraste)'} className={`p-3 rounded-xl transition-colors ${isGroupingMode ? 'bg-amber-400 text-white' : 'hover:bg-slate-700 text-slate-400 hover:text-amber-500'}`}>
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/><rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.5"/></svg>
              </button>
              <button onClick={async () => {
@@ -771,7 +797,7 @@ const App: React.FC = () => {
                  console.error('Export error', err);
                  alert('Erro ao exportar imagem. Verifique se a dependência "html-to-image" está instalada (execute `npm install html-to-image`).');
                }
-             }} title="Exportar screenshot" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600"><Download size={20} /></button>
+             }} title="Exportar screenshot" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400"><Download size={20} /></button>
 
              {/* Export buttons: Generic Patch v1, ChatGuru and chat-ia */}
              <button onClick={async () => {
@@ -779,7 +805,7 @@ const App: React.FC = () => {
                const patch = exportGenericPatch(activeWorkflow, { name: activeWorkflow.name, locale: 'pt-BR' });
                const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(activeWorkflow.name || 'patch').replace(/\s+/g,'_')}_autoflow_patch_v1.json`; a.click();
-             }} title="Exportar Patch Genérico (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-indigo-600">Patch Genérico</button>
+             }} title="Exportar Patch Genérico (JSON)" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-indigo-400">Patch Genérico</button>
 
              <button onClick={async () => {
                if (!activeWorkflow) return alert('Abra uma automação primeiro');
@@ -791,7 +817,7 @@ const App: React.FC = () => {
                // download
                const blob = new Blob([JSON.stringify(patch, null, 2)], { type: 'application/json' });
                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(activeWorkflow.name || 'patch').replace(/\s+/g,'_')}_chatguru_patch.json`; a.click();
-             }} title="Exportar ChatGuru (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-green-600">Export ChatGuru</button>
+             }} title="Exportar ChatGuru (JSON)" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-green-400">Export ChatGuru</button>
 
              <button onClick={async () => {
                if (!activeWorkflow) return alert('Abra uma automação primeiro');
@@ -802,7 +828,7 @@ const App: React.FC = () => {
                // copy to clipboard as convenience
                try { await navigator.clipboard.writeText(JSON.stringify(doc, null, 2)); } catch (e) {}
                alert('Exportado chat-ia (arquivo e copiado para clipboard)');
-             }} title="Exportar chat-ia (JSON)" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-purple-600">Export chat-ia</button>
+             }} title="Exportar chat-ia (JSON)" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-purple-400">Export chat-ia</button>
 
              <button onClick={async () => {
                if (!activeWorkflow) return alert('Abra uma automação primeiro');
@@ -819,7 +845,7 @@ const App: React.FC = () => {
                  console.error(err);
                  alert('Erro ao publicar no ChatGuru: ' + (err?.message || String(err)));
                }
-             }} title="Publicar no ChatGuru" className="p-3 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 hover:text-blue-600">Publicar</button>
+             }} title="Publicar no ChatGuru" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400">Publicar</button>
            </div>
         </div>
       </main>
