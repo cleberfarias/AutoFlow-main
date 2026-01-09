@@ -2,8 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 function loadIntents() {
-  const p = path.resolve(process.cwd(), 'data/intents.json');
-  if (!fs.existsSync(p)) return [];
+  const primary = path.resolve(process.cwd(), 'data/intents.json');
+  const fallback = path.resolve(process.cwd(), 'fixtures', 'intents.json');
+  const p = fs.existsSync(primary) ? primary : (fs.existsSync(fallback) ? fallback : null);
+  if (!p) return [];
   try {
     const raw = fs.readFileSync(p, 'utf-8');
     const json = JSON.parse(raw);
