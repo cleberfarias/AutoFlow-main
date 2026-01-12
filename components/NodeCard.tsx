@@ -61,6 +61,25 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
       case StepType.DATA: return { border: 'border-indigo-600', shadow: 'shadow-indigo-600/10', accent: 'bg-indigo-600' };
       case StepType.LOGIC: return { border: 'border-amber-500', shadow: 'shadow-amber-500/10', accent: 'bg-amber-500' };
       case StepType.ERROR_HANDLER: return { border: 'border-rose-500', shadow: 'shadow-rose-500/10', accent: 'bg-rose-500' };
+      case StepType.MCP: {
+        // Cores específicas por serviço MCP
+        const service = step.params?.mcp?.service;
+        const colors: Record<string, any> = {
+          stripe: { border: 'border-[#635BFF]', shadow: 'shadow-[#635BFF]/10', accent: 'bg-[#635BFF]' },
+          sendgrid: { border: 'border-[#1A82E2]', shadow: 'shadow-[#1A82E2]/10', accent: 'bg-[#1A82E2]' },
+          twilio: { border: 'border-[#F22F46]', shadow: 'shadow-[#F22F46]/10', accent: 'bg-[#F22F46]' },
+          hubspot: { border: 'border-[#FF7A59]', shadow: 'shadow-[#FF7A59]/10', accent: 'bg-[#FF7A59]' },
+          zendesk: { border: 'border-[#03363D]', shadow: 'shadow-[#03363D]/10', accent: 'bg-[#03363D]' },
+          'google-calendar': { border: 'border-[#4285F4]', shadow: 'shadow-[#4285F4]/10', accent: 'bg-[#4285F4]' },
+          docusign: { border: 'border-[#FFD200]', shadow: 'shadow-[#FFD200]/10', accent: 'bg-[#FFD200]' },
+          clicksign: { border: 'border-[#FF6B00]', shadow: 'shadow-[#FF6B00]/10', accent: 'bg-[#FF6B00]' },
+          rdstation: { border: 'border-[#F15A24]', shadow: 'shadow-[#F15A24]/10', accent: 'bg-[#F15A24]' },
+          pagarme: { border: 'border-[#65A300]', shadow: 'shadow-[#65A300]/10', accent: 'bg-[#65A300]' },
+          advbox: { border: 'border-[#1E3A8A]', shadow: 'shadow-[#1E3A8A]/10', accent: 'bg-[#1E3A8A]' },
+          mongodb: { border: 'border-[#00ED64]', shadow: 'shadow-[#00ED64]/10', accent: 'bg-[#00ED64]' }
+        };
+        return colors[service] || { border: 'border-purple-600', shadow: 'shadow-purple-600/10', accent: 'bg-purple-600' };
+      }
       default: return { border: 'border-slate-200', shadow: 'shadow-slate-200/10', accent: 'bg-slate-400' };
     }
   };
@@ -72,6 +91,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
     [StepType.DATA]: Database,
     [StepType.LOGIC]: Filter,
     [StepType.ERROR_HANDLER]: AlertTriangle,
+    [StepType.MCP]: Globe, // Ícone padrão para MCP
   }[step.type] || ArrowRight;
 
   const pos = step.position || { x: 0, y: 0 };
@@ -144,19 +164,45 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
         <div className="flex items-center justify-between mb-3">
           <div className={`flex items-center gap-3 ${lockedClasses}`} onClick={() => { if (!isLocked) toggleExpand(); }}>
             <div className={`w-11 h-11 ${theme.accent} rounded-2xl flex items-center justify-center shadow-lg ${isPreview ? 'w-10 h-10' : ''}`}>
-              <Icon size={isPreview ? 16 : 18} className="text-white" fill={step.type === StepType.TRIGGER ? 'currentColor' : 'none'} />
+              {step.type === StepType.MCP ? (
+                // Emoji específico do serviço MCP
+                <span className="text-2xl">
+                  {step.params?.mcp?.service === 'stripe' && '💳'}
+                  {step.params?.mcp?.service === 'sendgrid' && '📧'}
+                  {step.params?.mcp?.service === 'twilio' && '📱'}
+                  {step.params?.mcp?.service === 'hubspot' && '🎯'}
+                  {step.params?.mcp?.service === 'zendesk' && '🎫'}
+                  {step.params?.mcp?.service === 'google-calendar' && '📅'}
+                  {step.params?.mcp?.service === 'docusign' && '📝'}
+                  {step.params?.mcp?.service === 'clicksign' && '✍️'}
+                  {step.params?.mcp?.service === 'rdstation' && '📊'}
+                  {step.params?.mcp?.service === 'pagarme' && '💰'}
+                  {step.params?.mcp?.service === 'advbox' && '⚖️'}
+                  {step.params?.mcp?.service === 'mongodb' && '🍃'}
+                  {!step.params?.mcp?.service && '🔌'}
+                </span>
+              ) : (
+                <Icon size={isPreview ? 16 : 18} className="text-white" fill={step.type === StepType.TRIGGER ? 'currentColor' : 'none'} />
+              )}
             </div>
             <div>
               <div className="flex items-center justify-start gap-4 mb-2">
-                <div className={`w-9 h-9 ${theme.accent} rounded-full flex items-center justify-center shadow-sm`}>
-                  <Icon size={16} className="text-white" />
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{step.type}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {step.type === StepType.MCP ? '🔌 MCP' : step.type}
+                </span>
                 {step.params?.api && (
                   <div className="ml-2 px-2 py-1 rounded-md text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-100">API</div>
                 )}
+                {step.type === StepType.MCP && step.params?.mcp?.service && (
+                  <div className="ml-2 px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700 border border-purple-100">
+                    {step.params.mcp.service.toUpperCase()}
+                  </div>
+                )}
               </div>
               <h3 className={`text-slate-900 font-extrabold ${isPreview ? 'text-sm' : 'text-base'} leading-tight`}>{step.title || 'Sem título'}</h3>
+              {step.type === StepType.MCP && step.description && (
+                <p className="text-xs text-slate-500 mt-1">{step.description}</p>
+              )}
             </div>
           </div>
           <div className="flex gap-1">

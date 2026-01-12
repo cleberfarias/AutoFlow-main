@@ -1,18 +1,23 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Terminal, Globe, Activity, TerminalSquare, AlertCircle, Cpu, ChevronRight, Hash, Mic, MicOff } from 'lucide-react';
+import { X, Send, Terminal, Globe, Activity, TerminalSquare, AlertCircle, Cpu, ChevronRight, Hash, Mic, MicOff, Badge, HelpCircle } from 'lucide-react';
 import { WorkflowStep, StepType } from '../types';
 import { getOpenAI } from '../services/openaiClient';
 import { findNextAvailableSlot, findConflictingAppointments } from '../services/availability';
 import { findAvailabilityAction, createAppointmentAction } from '../services/simulatorActions';
 import type { Appointment, AvailabilityWindow, Service, Professional } from '../types';
 import { AppointmentStatus } from '../types';
+// Support Router - Sistema de Hierarquia de IA
+import { handleMessage as handleSupportMessage, getSessionStatus } from '../src/services/supportRouter';
+import type { SupportUIResponse } from '../src/services/supportRouter';
 
 interface TestChatProps {
   steps: WorkflowStep[];
   onClose: () => void;
   onStepActive: (id: string | null) => void;
   onApiError?: (n?: number) => void;
+  // Novo: modo de operação do chat
+  mode?: 'workflow' | 'support'; // 'workflow' = comportamento atual, 'support' = novo sistema de suporte
 }
 
 interface Message {
@@ -24,9 +29,18 @@ interface Message {
     description: string;
     payload?: any;
   };
+  // Novos campos para suporte
+  supportData?: {
+    intent?: string;
+    severity?: string;
+    stage?: string;
+    confidence?: number;
+    checklist?: string[];
+    action?: string;
+  };
 }
 
-const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApiError }) => {
+const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApiError, mode = 'workflow' }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -37,6 +51,10 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
   const [availabilityList, setAvailabilityList] = useState<AvailabilityWindow[]>([]);
   const [servicesList, setServicesList] = useState<Service[]>([]);
   const [professionalsList, setProfessionalsList] = useState<Professional[]>([]);
+  
+  // Novo: Estado para modo suporte
+  const [currentChatId] = useState(() => `chat_${Date.now()}`); // ID único para esta sessão
+  const [supportSessionData, setSupportSessionData] = useState<any>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
@@ -79,8 +97,18 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
       { professionalId: 'p2', start: '2025-12-26T09:00:00.000Z', end: '2025-12-26T12:00:00.000Z' }
     ]);
 
-    startSimulation();
-  }, []);
+    // Inicializar baseado no modo
+    if (mode === 'support') {
+      // Modo suporte: mensagem de boas-vindas
+      setMessages([{
+        role: 'assistant',
+        content: 'Olá! 👋 Sou o assistente de suporte do ChatGuru. Como posso ajudar você hoje?'
+      }]);
+    } else {
+      // Modo workflow: inicializa simulação normal
+      startSimulation();
+    }
+  }, [mode]);
 
   const toggleRecording = async () => {
     if (isRecording) {
@@ -247,6 +275,64 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsTyping(true);
 
+    // NOVO: Se modo suporte, usar o supportRouter
+    if (mode === 'support') {
+      try {
+        const response: SupportUIResponse = await handleSupportMessage(currentChatId, userMsg);
+        
+        // Atualizar dados da sessão
+        const sessionStatus = getSessionStatus(currentChatId);
+        setSupportSessionData(sessionStatus);
+
+        // Criar mensagem do assistente
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: response.replyText,
+          supportData: {
+            intent: response.intent,
+            severity: response.severity,
+            stage: response.stageNext,
+            confidence: response.confidence,
+            checklist: response.checklist,
+            action: response.action
+          }
+        };
+
+        // Se tem checklist, adicionar ao conteúdo
+        if (response.checklist && response.checklist.length > 0) {
+          assistantMessage.content += '\n\n';
+          // A checklist será renderizada separadamente no UI
+        }
+
+        setMessages(prev => [...prev, assistantMessage]);
+        
+        // Se transferiu para humano, avisar
+        if (response.action === 'HANDOFF') {
+          setTimeout(() => {
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: '🔔 Você foi transferido para a fila de atendimento humano. Um agente irá atendê-lo em breve.',
+              supportData: {
+                action: 'HANDOFF',
+                stage: 'HUMAN'
+              }
+            }]);
+          }, 1000);
+        }
+
+      } catch (error) {
+        console.error('[TestChat] Erro no modo suporte:', error);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Desculpe, ocorreu um erro. Por favor, tente novamente.'
+        }]);
+      } finally {
+        setIsTyping(false);
+      }
+      return;
+    }
+
+    // CÓDIGO ORIGINAL: modo workflow
     const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
 
     try {
@@ -325,7 +411,9 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
         <div className="flex items-center gap-3">
           <Cpu size={20} className="text-blue-400" />
           <div>
-            <h2 className="font-black text-[10px] uppercase tracking-widest text-blue-400">Runtime Simulator v2</h2>
+            <h2 className="font-black text-[10px] uppercase tracking-widest text-blue-400">
+              {mode === 'support' ? 'Suporte ChatGuru' : 'Runtime Simulator v2'}
+            </h2>
             <div className="flex items-center gap-2 mt-1">
                <div className={`w-1.5 h-1.5 rounded-full ${isRecording ? 'bg-rose-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
                <span className="text-xs font-bold text-slate-300">{isRecording ? 'Escutando Áudio...' : 'Conversa Ativa'}</span>
@@ -335,58 +423,103 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
         <button onClick={() => { onStepActive(null); onClose(); }} className="p-2.5 hover:bg-white/10 rounded-xl transition-colors"><X size={20} /></button>
       </div>
 
-      <div className="bg-slate-800 border-b border-white/5 p-4 flex gap-3 overflow-x-auto no-scrollbar">
-         {Object.entries(variables).length > 0 ? Object.entries(variables).map(([key, val]) => (
-           <div key={key} className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/10 shrink-0">
-             <Hash size={10} className="text-blue-400" />
-             <span className="text-[10px] font-bold text-slate-400">{key}:</span>
-             <span className="text-[10px] font-mono text-white">{String(val)}</span>
-           </div>
-         )) : (
-           <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 px-2">
-             <Activity size={10} /> Aguardando captura de dados...
-           </div>
-         )}
-      </div>
+      {/* Barra de status da sessão - apenas no modo suporte */}
+      {mode === 'support' && supportSessionData && (
+        <div className="bg-slate-800 border-b border-white/5 px-4 py-3 flex items-center gap-3 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/10 shrink-0">
+            <Activity size={10} className="text-blue-400" />
+            <span className="text-[10px] font-bold text-slate-400">Stage:</span>
+            <span className="text-[10px] font-mono text-white">{supportSessionData.stage}</span>
+          </div>
+          
+          {supportSessionData.intent && (
+            <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/10 shrink-0">
+              <HelpCircle size={10} className="text-purple-400" />
+              <span className="text-[10px] font-bold text-slate-400">Intent:</span>
+              <span className="text-[10px] font-mono text-white">{supportSessionData.intent}</span>
+            </div>
+          )}
 
-      {/* Quick POC controls for availability / appointment */}
-      <div className="p-4 bg-white border-b border-slate-100 flex items-center gap-3">
-        <select value={selectedProfessional} onChange={(e) => setSelectedProfessional(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
-          <option value="">Selecionar profissional</option>
-          {professionalsList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+          {supportSessionData.severity && (
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shrink-0 ${
+              supportSessionData.severity === 'HIGH' ? 'bg-rose-900/50 border-rose-500/30' :
+              supportSessionData.severity === 'MEDIUM' ? 'bg-amber-900/50 border-amber-500/30' :
+              'bg-emerald-900/50 border-emerald-500/30'
+            }`}>
+              <Badge size={10} className={
+                supportSessionData.severity === 'HIGH' ? 'text-rose-400' :
+                supportSessionData.severity === 'MEDIUM' ? 'text-amber-400' :
+                'text-emerald-400'
+              } />
+              <span className="text-[10px] font-bold text-slate-400">Severity:</span>
+              <span className="text-[10px] font-mono text-white">{supportSessionData.severity}</span>
+            </div>
+          )}
 
-        <select value={selectedService} onChange={(e) => setSelectedService(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
-          <option value="">Selecionar serviço</option>
-          {servicesList.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-        </select>
+          <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/10 shrink-0">
+            <Terminal size={10} className="text-cyan-400" />
+            <span className="text-[10px] font-bold text-slate-400">Confidence:</span>
+            <span className="text-[10px] font-mono text-white">{(supportSessionData.confidence * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+      )}
 
-        <button onClick={() => {
-          const payload = { professionalId: selectedProfessional, serviceId: selectedService, fromISO: new Date().toISOString() };
-          const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, payload);
-          if (res) {
-            setVariables(prev => ({ ...prev, suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd }));
-            setMessages(prev => [...prev, { role: 'assistant', content: `Sugestão encontrada: ${res.suggestedStart} → ${res.suggestedEnd}`, techLog: { action: 'findAvailability', description: `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}` } }]);
-          } else {
-            setMessages(prev => [...prev, { role: 'assistant', content: `Nenhuma janela disponível.`, techLog: { action: 'findAvailability', description: 'Nenhuma janela disponível encontrada' } }]);
-          }
-        }} className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Encontrar vaga</button>
+      {/* Barra de variáveis - apenas no modo workflow */}
+      {mode === 'workflow' && (
+        <div className="bg-slate-800 border-b border-white/5 p-4 flex gap-3 overflow-x-auto no-scrollbar">
+           {Object.entries(variables).length > 0 ? Object.entries(variables).map(([key, val]) => (
+             <div key={key} className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/10 shrink-0">
+               <Hash size={10} className="text-blue-400" />
+               <span className="text-[10px] font-bold text-slate-400">{key}:</span>
+               <span className="text-[10px] font-mono text-white">{String(val)}</span>
+             </div>
+           )) : (
+             <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 px-2">
+               <Activity size={10} /> Aguardando captura de dados...
+             </div>
+           )}
+        </div>
+      )}
 
-        <button onClick={() => {
-          const start = variables.suggestedStart;
-          const end = variables.suggestedEnd;
-          if (!start || !end) {
-            setMessages(prev => [...prev, { role: 'assistant', content: 'Não há vaga sugerida para criar agendamento.', techLog: { action: 'createAppointment', description: 'sem sugestão' } }]);
-            return;
-          }
-          const payload = { professionalId: selectedProfessional, serviceId: selectedService, start, end } as any;
-          const appt = createAppointmentAction(appointmentsList, payload);
-          setAppointmentsList(prev => [...prev, appt]);
-          setVariables(prev => ({ ...prev, lastAppointmentId: appt.id, lastAppointmentStart: appt.start }));
-          setMessages(prev => [...prev, { role: 'assistant', content: `Agendamento criado: ${appt.id} ${appt.start}`, techLog: { action: 'createAppointment', description: `Agendamento criado ${appt.id} ${appt.start}` } }]);
-        }} className="px-3 py-2 bg-emerald-600 text-white rounded-md text-sm">Criar agendamento</button>
+      {/* Quick POC controls for availability / appointment - apenas no modo workflow */}
+      {mode === 'workflow' && (
+        <div className="p-4 bg-white border-b border-slate-100 flex items-center gap-3">
+          <select value={selectedProfessional} onChange={(e) => setSelectedProfessional(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
+            <option value="">Selecionar profissional</option>
+            {professionalsList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
 
-      </div>
+          <select value={selectedService} onChange={(e) => setSelectedService(e.target.value || undefined)} className="px-3 py-2 border rounded-md text-sm">
+            <option value="">Selecionar serviço</option>
+            {servicesList.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+
+          <button onClick={() => {
+            const payload = { professionalId: selectedProfessional, serviceId: selectedService, fromISO: new Date().toISOString() };
+            const res = findAvailabilityAction(availabilityList, appointmentsList, servicesList, payload);
+            if (res) {
+              setVariables(prev => ({ ...prev, suggestedStart: res.suggestedStart, suggestedEnd: res.suggestedEnd }));
+              setMessages(prev => [...prev, { role: 'assistant', content: `Sugestão encontrada: ${res.suggestedStart} → ${res.suggestedEnd}`, techLog: { action: 'findAvailability', description: `Encontrada vaga: ${res.suggestedStart} -> ${res.suggestedEnd}` } }]);
+            } else {
+              setMessages(prev => [...prev, { role: 'assistant', content: `Nenhuma janela disponível.`, techLog: { action: 'findAvailability', description: 'Nenhuma janela disponível encontrada' } }]);
+            }
+          }} className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Encontrar vaga</button>
+
+          <button onClick={() => {
+            const start = variables.suggestedStart;
+            const end = variables.suggestedEnd;
+            if (!start || !end) {
+              setMessages(prev => [...prev, { role: 'assistant', content: 'Não há vaga sugerida para criar agendamento.', techLog: { action: 'createAppointment', description: 'sem sugestão' } }]);
+              return;
+            }
+            const payload = { professionalId: selectedProfessional, serviceId: selectedService, start, end } as any;
+            const appt = createAppointmentAction(appointmentsList, payload);
+            setAppointmentsList(prev => [...prev, appt]);
+            setVariables(prev => ({ ...prev, lastAppointmentId: appt.id, lastAppointmentStart: appt.start }));
+            setMessages(prev => [...prev, { role: 'assistant', content: `Agendamento criado: ${appt.id} ${appt.start}`, techLog: { action: 'createAppointment', description: `Agendamento criado ${appt.id} ${appt.start}` } }]);
+          }} className="px-3 py-2 bg-emerald-600 text-white rounded-md text-sm">Criar agendamento</button>
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50">
         {error && (
@@ -398,7 +531,8 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
 
         {messages.map((msg, i) => (
           <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} space-y-3`}>
-            {msg.techLog && (
+            {/* TechLog - apenas no modo workflow */}
+            {msg.techLog && mode === 'workflow' && (
               <div className="w-[90%] bg-slate-900 rounded-2xl p-4 border border-white/5 shadow-lg animate-in fade-in slide-in-from-bottom-2">
                  <div className="flex items-center gap-2 text-[9px] font-black text-blue-400 uppercase mb-2">
                    <TerminalSquare size={10} /> {msg.techLog.action}
@@ -408,6 +542,8 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
                  </p>
               </div>
             )}
+            
+            {/* Mensagem principal */}
             <div className={`max-w-[85%] p-5 rounded-[24px] text-sm leading-relaxed shadow-sm ${
               msg.role === 'user' 
               ? 'bg-blue-600 text-white rounded-tr-none' 
@@ -415,6 +551,34 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
             }`}>
               {msg.content}
             </div>
+
+            {/* Checklist - apenas no modo suporte quando existir */}
+            {msg.supportData?.checklist && msg.supportData.checklist.length > 0 && (
+              <div className="w-[85%] bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-4 shadow-md">
+                <div className="flex items-center gap-2 mb-3 text-blue-700">
+                  <ChevronRight size={16} className="font-bold" />
+                  <span className="text-xs font-black uppercase tracking-wide">Passo a passo:</span>
+                </div>
+                <ol className="space-y-2">
+                  {msg.supportData.checklist.map((step, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <div className="flex-shrink-0 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5">
+                        {idx + 1}
+                      </div>
+                      <span className="text-sm text-slate-700 leading-relaxed">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Badge de ação especial - modo suporte */}
+            {msg.supportData?.action === 'HANDOFF' && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-300 rounded-full">
+                <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                <span className="text-xs font-bold text-amber-700">Transferindo para atendimento humano...</span>
+              </div>
+            )}
           </div>
         ))}
         {isTyping && (

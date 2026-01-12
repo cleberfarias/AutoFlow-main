@@ -16,6 +16,8 @@ import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import WorkflowsPage from './components/WorkflowsPage';
 import GenericPage from './components/GenericPage';
+import MCPHub from './components/MCPHub';
+import { MCPSelectorModal, MCPNodeCard } from './components/MCPNode';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
@@ -69,6 +71,16 @@ const App: React.FC = () => {
   const groupingRef = useRef<{startX:number,startY:number,active:boolean}|null>(null);
   const GRID_SIZE = 20;
   const [isLegendOpen, setIsLegendOpen] = useState(false);
+  
+  // Menu de contexto MCP
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+    canvasX?: number;
+    canvasY?: number;
+  }>({ x: 0, y: 0, visible: false });
+  const [showMCPModal, setShowMCPModal] = useState(false);
 
   // Guided nodes: keep track of unlocked steps (by id)
   const [unlockedSteps, setUnlockedSteps] = useState<Set<string>>(new Set());
@@ -108,7 +120,38 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('🔌 Menu de Contexto MCP ativado!', { x: e.clientX, y: e.clientY });
+    
+    if (!canvasRef.current) {
+      console.warn('Canvas ref não encontrado');
+      return;
+    }
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left - viewTransform.x) / viewTransform.scale;
+    const canvasY = (e.clientY - rect.top - viewTransform.y) / viewTransform.scale;
+    
+    console.log('📍 Posição calculada:', { screenX: e.clientX, screenY: e.clientY, canvasX, canvasY });
+    
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      canvasX,
+      canvasY
+    });
+  };
+  
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Fechar menu de contexto ao clicar
+    if (contextMenu.visible) {
+      setContextMenu({ ...contextMenu, visible: false });
+    }
+    
     const isMiddleClick = e.button === 1;
 
     // Grouping mode: start selection rect in canvas coords
@@ -427,6 +470,68 @@ const App: React.FC = () => {
     saveCurrentWorkflow(updated);
   };
 
+  // Handler MCP: adicionar node MCP no canvas
+  const handleAddMCPNode = (mcpConfig: any) => {
+    if (!activeWorkflow) return;
+    
+    const { service, action, params } = mcpConfig;
+    
+    // Labels amigáveis
+    const serviceLabels: Record<string, string> = {
+      stripe: 'Stripe',
+      sendgrid: 'SendGrid',
+      twilio: 'Twilio',
+      hubspot: 'HubSpot',
+      zendesk: 'Zendesk',
+      'google-calendar': 'Google Calendar',
+      docusign: 'DocuSign',
+      clicksign: 'Clicksign',
+      rdstation: 'RD Station',
+      pagarme: 'Pagar.me',
+      advbox: 'Advbox',
+      mongodb: 'MongoDB'
+    };
+    
+    const actionLabels: Record<string, string> = {
+      createCheckout: 'Criar Checkout',
+      createPaymentIntent: 'Criar Pagamento',
+      createCustomer: 'Criar Cliente',
+      sendEmail: 'Enviar Email',
+      sendSMS: 'Enviar SMS',
+      sendWhatsApp: 'Enviar WhatsApp',
+      createContact: 'Criar Contato',
+      updateContact: 'Atualizar Contato',
+      createTicket: 'Criar Ticket',
+      updateTicket: 'Atualizar Ticket',
+      createMeeting: 'Criar Reunião',
+      sendDocument: 'Enviar Documento',
+      createCharge: 'Criar Cobrança',
+      createPix: 'Criar PIX'
+    };
+    
+    const newStep: WorkflowStep = {
+      id: `mcp-${Date.now()}`,
+      type: StepType.MCP,
+      title: `${serviceLabels[service] || service}`,
+      description: actionLabels[action] || action,
+      params: {
+        mcp: {
+          service,
+          action,
+          params
+        }
+      },
+      position: {
+        x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 400,
+        y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 300
+      }
+    };
+    
+    saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+    setShowMCPModal(false);
+    setContextMenu({ ...contextMenu, visible: false });
+  };
+
   const deleteWorkflow = (id: string) => {
     if (!activeClient || !window.confirm("Excluir esta automação permanentemente?")) return;
     const updatedClient = {
@@ -494,8 +599,9 @@ const App: React.FC = () => {
             }
           }}
         />;
-      case 'ai-routing':
       case 'mcp-hub':
+        return <MCPHub />;
+      case 'ai-routing':
       case 'templates':
       case 'versions':
       case 'logs':
@@ -615,6 +721,17 @@ const App: React.FC = () => {
                 saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
               }} className="px-4 py-4 bg-slate-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-slate-600 transition-all">+ Nova Etapa</button>
             </div>
+            
+            {/* Botão MCP - NOVO! */}
+            <button 
+              onClick={() => {
+                console.log('🔌 Abrindo Modal MCP via botão...');
+                setShowMCPModal(true);
+              }}
+              className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-xl shadow-purple-600/25 hover:from-purple-700 hover:to-blue-700 transition-all transform hover:scale-[1.02]"
+            >
+              <span className="text-lg">🔌</span> MCP Integration
+            </button>
             <div className="pt-4 border-t border-slate-700">
               <div className="mt-3 flex gap-2">
                 <button onClick={() => {
@@ -634,6 +751,7 @@ const App: React.FC = () => {
         ref={canvasRef}
         className={`flex-1 relative overflow-hidden bg-slate-950 ${isPanning || isSpacePressed ? 'cursor-grabbing' : 'cursor-grab'}`}
         onPointerDown={handlePointerDown}
+        onContextMenu={handleContextMenu}
         onWheel={handleWheel}
         style={{ touchAction: 'none' }}
       >
@@ -766,7 +884,7 @@ const App: React.FC = () => {
           </div>
         )}
         <div className="absolute top-6 left-6 bg-slate-800/90 backdrop-blur-xl border border-slate-700 rounded-2xl px-4 py-3 shadow-xl text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {isGroupingMode ? (<span>Modo de Agrupamento: arraste para selecionar nós • clique novamente para cancelar</span>) : (<span>Dicas: segure <span className="text-teal-400">Space</span> para mover • role para zoom</span>)}
+          {isGroupingMode ? (<span>Modo de Agrupamento: arraste para selecionar nós • clique novamente para cancelar</span>) : (<span>Dicas: segure <span className="text-teal-400">Space</span> para mover • <span className="text-purple-400">Botão Direito</span> para menu MCP 🔌</span>)}
         </div>
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-800/90 backdrop-blur-xl px-8 py-4 rounded-3xl shadow-2xl border border-slate-700 z-40">
            <button onClick={() => setIsTesting(true)} disabled={activeWorkflow.steps.length === 0} className="px-8 py-3.5 bg-teal-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center gap-3 hover:bg-teal-700 transition-all disabled:opacity-30"><Play size={16} fill="currentColor" /> Simular Fluxo</button>
@@ -848,7 +966,152 @@ const App: React.FC = () => {
              }} title="Publicar no ChatGuru" className="p-3 hover:bg-slate-700 rounded-xl transition-colors text-slate-400 hover:text-teal-400">Publicar</button>
            </div>
         </div>
+
+        {/* Menu de Contexto MCP */}
+        {contextMenu.visible && (
+          <>
+            {/* Overlay para fechar ao clicar fora */}
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 9998
+              }}
+              onClick={() => {
+                console.log('Fechando menu por overlay');
+                setContextMenu({ ...contextMenu, visible: false });
+              }}
+            />
+            
+            {/* Menu */}
+            <div
+              style={{
+                position: 'fixed',
+                left: contextMenu.x,
+                top: contextMenu.y,
+                zIndex: 9999
+              }}
+              className="bg-slate-800 border-2 border-teal-500 rounded-xl shadow-2xl overflow-hidden min-w-[220px] animate-in fade-in duration-100"
+            >
+              <div className="p-1.5">
+                <div className="text-[10px] text-teal-400 px-3 py-2 font-bold uppercase tracking-wider bg-slate-900/50 rounded-lg mb-1">
+                  ✨ Adicionar Node
+                </div>
+              
+              <button
+                onClick={() => {
+                  if (!activeWorkflow) return;
+                  const newStep: WorkflowStep = {
+                    id: Date.now().toString(),
+                    type: StepType.TRIGGER,
+                    title: 'Novo Gatilho',
+                    description: '',
+                    params: {},
+                    position: {
+                      x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 200,
+                      y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 200
+                    }
+                  };
+                  saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-700 text-white text-sm flex items-center gap-2 rounded"
+              >
+                <span>⚡</span> Gatilho
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (!activeWorkflow) return;
+                  const newStep: WorkflowStep = {
+                    id: Date.now().toString(),
+                    type: StepType.ACTION,
+                    title: 'Nova Ação',
+                    description: '',
+                    params: {},
+                    position: {
+                      x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 200,
+                      y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 200
+                    }
+                  };
+                  saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-700 text-white text-sm flex items-center gap-2 rounded"
+              >
+                <span>⚙️</span> Ação
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (!activeWorkflow) return;
+                  const newStep: WorkflowStep = {
+                    id: Date.now().toString(),
+                    type: StepType.DATA,
+                    title: 'Novo Dado',
+                    description: '',
+                    params: {},
+                    position: {
+                      x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 200,
+                      y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 200
+                    }
+                  };
+                  saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-700 text-white text-sm flex items-center gap-2 rounded"
+              >
+                <span>📊</span> Dados
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (!activeWorkflow) return;
+                  const newStep: WorkflowStep = {
+                    id: Date.now().toString(),
+                    type: StepType.LOGIC,
+                    title: 'Nova Lógica',
+                    description: '',
+                    params: {},
+                    position: {
+                      x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 200,
+                      y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 200
+                    }
+                  };
+                  saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-700 text-white text-sm flex items-center gap-2 rounded"
+              >
+                <span>🧠</span> Lógica
+              </button>
+
+              <div className="border-t border-slate-700 my-1.5"></div>
+
+              {/* Opção MCP - DESTACADA */}
+              <button
+                onClick={() => {
+                  console.log('🔌 Abrindo Modal MCP...');
+                  setShowMCPModal(true);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm flex items-center gap-2 font-bold rounded shadow-lg transition-all transform hover:scale-105"
+              >
+                <span className="text-lg">🔌</span> MCP Integration
+              </button>
+              </div>
+            </div>
+          </>
+        )}
       </main>
+      
+      {/* Modal MCP */}
+      <MCPSelectorModal
+        isOpen={showMCPModal}
+        onClose={() => setShowMCPModal(false)}
+        onSelect={handleAddMCPNode}
+      />
+      
       <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
       {isTesting && <TestChat steps={activeWorkflow.steps} onClose={() => setIsTesting(false)} onStepActive={setActiveStepId} onApiError={incrementApiErrors} />}
       {editingStepId && <EditorModal step={activeWorkflow.steps.find(s => s.id === editingStepId)!} onClose={() => setEditingStepId(null)} onSave={(updated) => { saveCurrentWorkflow(activeWorkflow.steps.map(x => x.id === updated.id ? updated : x)); setEditingStepId(null); }} />}

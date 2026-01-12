@@ -4,7 +4,8 @@ export enum StepType {
   ACTION = 'ACTION',
   DATA = 'DATA',
   LOGIC = 'LOGIC',
-  ERROR_HANDLER = 'ERROR_HANDLER'
+  ERROR_HANDLER = 'ERROR_HANDLER',
+  MCP = 'MCP' // Ações de integração com serviços externos
 }
 
 export interface WorkflowStep {
@@ -28,6 +29,12 @@ export interface WorkflowStep {
       auth?: { type?: 'none' | 'bearer' | 'apiKey' | 'basic'; headerName?: string; secretRef?: string };
       responseMapping?: Array<{ jsonPath: string; outputKey: string }>;
       timeoutMs?: number;
+    };
+    // MCP integration config
+    mcp?: {
+      service: 'stripe' | 'sendgrid' | 'twilio' | 'hubspot' | 'zendesk' | 'google-calendar' | 'docusign' | 'clicksign' | 'rdstation' | 'pagarme' | 'advbox' | 'mongodb';
+      action: string; // Ex: 'createCheckout', 'sendEmail', 'sendSMS'
+      params: Record<string, any>; // Parâmetros específicos da ação
     };
     [key: string]: any;
   };
