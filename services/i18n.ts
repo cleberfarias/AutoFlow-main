@@ -27,6 +27,11 @@ export const translations: Translations = {
     'en-US': 'AI Routing',
     'es-ES': 'Enrutamiento IA'
   },
+  'nav.mcpHub': {
+    'pt-BR': 'MCP Hub',
+    'en-US': 'MCP Hub',
+    'es-ES': 'Centro MCP'
+  },
   'nav.templates': {
     'pt-BR': 'Templates',
     'en-US': 'Templates',
