@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, Workflow, Zap, Boxes, BookTemplate, 
-  GitBranch, FileText, Settings, ChevronDown, LogOut 
+  GitBranch, FileText, Settings, ChevronDown, LogOut, MessageSquare
 } from 'lucide-react';
 import { t } from '../services/i18n';
 import { settingsManager } from '../services/settingsManager';
@@ -32,6 +32,7 @@ export default function Navbar({ currentPage, onPageChange, onLogout }: NavbarPr
     { id: 'workflows', label: t('nav.workflows'), icon: Workflow },
     { id: 'ai-routing', label: t('nav.aiRouting'), icon: Zap },
     { id: 'mcp-hub', label: t('nav.mcpHub'), icon: Boxes },
+    { id: 'whatsapp', label: t('whatsapp.title', 'WhatsApp'), icon: MessageSquare },
     { id: 'templates', label: t('nav.templates'), icon: BookTemplate },
     { id: 'versions', label: t('nav.versions'), icon: GitBranch },
     { id: 'logs', label: t('nav.logs'), icon: FileText },

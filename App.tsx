@@ -24,6 +24,7 @@ import TemplatesPage from './components/TemplatesPage';
 import VersionsPage from './components/VersionsPage';
 import LogsPage from './components/LogsPage';
 import SettingsPage from './components/SettingsPage';
+import WhatsAppManager from './components/WhatsAppManager';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 import { logger } from './services/logger';
 import { versionControl } from './services/versionControl';
@@ -729,6 +730,8 @@ const App: React.FC = () => {
         return <LogsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'whatsapp':
+        return <WhatsAppManager />;
       default:
         return <Dashboard clients={clients} workflows={allWorkflows} />;
     }

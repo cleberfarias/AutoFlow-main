@@ -592,6 +592,205 @@ class I18n {
   }
 }
 
+// WhatsApp MEOW translations added before class export
+Object.assign(translations, {
+  'whatsapp.title': {
+    'pt-BR': 'WhatsApp MEOW',
+    'en-US': 'WhatsApp MEOW',
+    'es-ES': 'WhatsApp MEOW'
+  },
+  'whatsapp.subtitle': {
+    'pt-BR': 'Gerenciar conexão e automações WhatsApp',
+    'en-US': 'Manage WhatsApp connection and automations',
+    'es-ES': 'Gestionar conexión y automatizaciones de WhatsApp'
+  },
+  'whatsapp.connectionStatus': {
+    'pt-BR': 'Status da Conexão',
+    'en-US': 'Connection Status',
+    'es-ES': 'Estado de Conexión'
+  },
+  'whatsapp.connect': {
+    'pt-BR': 'Conectar',
+    'en-US': 'Connect',
+    'es-ES': 'Conectar'
+  },
+  'whatsapp.disconnect': {
+    'pt-BR': 'Desconectar',
+    'en-US': 'Disconnect',
+    'es-ES': 'Desconectar'
+  },
+  'whatsapp.logout': {
+    'pt-BR': 'Logout',
+    'en-US': 'Logout',
+    'es-ES': 'Cerrar Sesión'
+  },
+  'whatsapp.confirmLogout': {
+    'pt-BR': 'Tem certeza? Isso removerá a sessão e você precisará escanear o QR novamente.',
+    'en-US': 'Are you sure? This will remove the session and you will need to scan the QR again.',
+    'es-ES': '¿Estás seguro? Esto eliminará la sesión y tendrás que escanear el QR de nuevo.'
+  },
+  'whatsapp.status.ready': {
+    'pt-BR': 'Conectado',
+    'en-US': 'Connected',
+    'es-ES': 'Conectado'
+  },
+  'whatsapp.status.qr': {
+    'pt-BR': 'Aguardando QR Code',
+    'en-US': 'Waiting for QR Code',
+    'es-ES': 'Esperando Código QR'
+  },
+  'whatsapp.status.connecting': {
+    'pt-BR': 'Conectando',
+    'en-US': 'Connecting',
+    'es-ES': 'Conectando'
+  },
+  'whatsapp.status.authenticated': {
+    'pt-BR': 'Autenticado',
+    'en-US': 'Authenticated',
+    'es-ES': 'Autenticado'
+  },
+  'whatsapp.status.disconnected': {
+    'pt-BR': 'Desconectado',
+    'en-US': 'Disconnected',
+    'es-ES': 'Desconectado'
+  },
+  'whatsapp.phoneNumber': {
+    'pt-BR': 'Número',
+    'en-US': 'Phone Number',
+    'es-ES': 'Número'
+  },
+  'whatsapp.platform': {
+    'pt-BR': 'Plataforma',
+    'en-US': 'Platform',
+    'es-ES': 'Plataforma'
+  },
+  'whatsapp.battery': {
+    'pt-BR': 'Bateria',
+    'en-US': 'Battery',
+    'es-ES': 'Batería'
+  },
+  'whatsapp.scanQR': {
+    'pt-BR': 'Escanear QR Code',
+    'en-US': 'Scan QR Code',
+    'es-ES': 'Escanear Código QR'
+  },
+  'whatsapp.qrInstructions': {
+    'pt-BR': '1. Abra o WhatsApp no celular',
+    'en-US': '1. Open WhatsApp on your phone',
+    'es-ES': '1. Abre WhatsApp en tu teléfono'
+  },
+  'whatsapp.qrInstructions2': {
+    'pt-BR': '2. Vá em Configurações > Dispositivos Vinculados',
+    'en-US': '2. Go to Settings > Linked Devices',
+    'es-ES': '2. Ve a Ajustes > Dispositivos Vinculados'
+  },
+  'whatsapp.qrInstructions3': {
+    'pt-BR': '3. Escaneie este QR Code',
+    'en-US': '3. Scan this QR Code',
+    'es-ES': '3. Escanea este Código QR'
+  },
+  'whatsapp.sendTestMessage': {
+    'pt-BR': 'Enviar Mensagem de Teste',
+    'en-US': 'Send Test Message',
+    'es-ES': 'Enviar Mensaje de Prueba'
+  },
+  'whatsapp.phoneFormat': {
+    'pt-BR': 'Formato: código do país + DDD + número (sem +)',
+    'en-US': 'Format: country code + area code + number (without +)',
+    'es-ES': 'Formato: código de país + código de área + número (sin +)'
+  },
+  'whatsapp.message': {
+    'pt-BR': 'Mensagem',
+    'en-US': 'Message',
+    'es-ES': 'Mensaje'
+  },
+  'whatsapp.messagePlaceholder': {
+    'pt-BR': 'Digite sua mensagem...',
+    'en-US': 'Type your message...',
+    'es-ES': 'Escribe tu mensaje...'
+  },
+  'whatsapp.send': {
+    'pt-BR': 'Enviar',
+    'en-US': 'Send',
+    'es-ES': 'Enviar'
+  },
+  'whatsapp.sending': {
+    'pt-BR': 'Enviando...',
+    'en-US': 'Sending...',
+    'es-ES': 'Enviando...'
+  },
+  'whatsapp.fillPhoneAndMessage': {
+    'pt-BR': 'Preencha o telefone e a mensagem',
+    'en-US': 'Fill in the phone number and message',
+    'es-ES': 'Completa el teléfono y el mensaje'
+  },
+  'whatsapp.messageSent': {
+    'pt-BR': 'Mensagem enviada com sucesso!',
+    'en-US': 'Message sent successfully!',
+    'es-ES': '¡Mensaje enviado con éxito!'
+  },
+  'whatsapp.errorSending': {
+    'pt-BR': 'Erro ao enviar',
+    'en-US': 'Error sending',
+    'es-ES': 'Error al enviar'
+  },
+  'whatsapp.recentMessages': {
+    'pt-BR': 'Mensagens Recentes',
+    'en-US': 'Recent Messages',
+    'es-ES': 'Mensajes Recientes'
+  },
+  'whatsapp.noMessages': {
+    'pt-BR': 'Nenhuma mensagem ainda',
+    'en-US': 'No messages yet',
+    'es-ES': 'No hay mensajes aún'
+  },
+  'whatsapp.group': {
+    'pt-BR': 'Grupo',
+    'en-US': 'Group',
+    'es-ES': 'Grupo'
+  },
+  'whatsapp.logs': {
+    'pt-BR': 'Logs de Atividade',
+    'en-US': 'Activity Logs',
+    'es-ES': 'Registros de Actividad'
+  },
+  'whatsapp.clearLogs': {
+    'pt-BR': 'Limpar',
+    'en-US': 'Clear',
+    'es-ES': 'Limpiar'
+  },
+  'whatsapp.noLogs': {
+    'pt-BR': 'Nenhum log ainda',
+    'en-US': 'No logs yet',
+    'es-ES': 'No hay registros aún'
+  },
+  'whatsapp.quickActions': {
+    'pt-BR': 'Ações Rápidas',
+    'en-US': 'Quick Actions',
+    'es-ES': 'Acciones Rápidas'
+  },
+  'whatsapp.viewGroups': {
+    'pt-BR': 'Ver Grupos',
+    'en-US': 'View Groups',
+    'es-ES': 'Ver Grupos'
+  },
+  'whatsapp.viewContacts': {
+    'pt-BR': 'Ver Contatos',
+    'en-US': 'View Contacts',
+    'es-ES': 'Ver Contactos'
+  },
+  'whatsapp.sendMedia': {
+    'pt-BR': 'Enviar Mídia',
+    'en-US': 'Send Media',
+    'es-ES': 'Enviar Multimedia'
+  },
+  'whatsapp.syncChats': {
+    'pt-BR': 'Sincronizar',
+    'en-US': 'Synchronize',
+    'es-ES': 'Sincronizar'
+  }
+});
+
 export const i18n = new I18n();
 
 // Função helper para uso direto

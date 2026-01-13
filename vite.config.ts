@@ -25,6 +25,9 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
+      optimizeDeps: {
+        exclude: ['whatsapp-web.js', 'qrcode-terminal']
+      },
       plugins: [
         react(),
         // Dev middleware to proxy /api/generate to OpenAI when running vite dev (fallback se server não estiver rodando)

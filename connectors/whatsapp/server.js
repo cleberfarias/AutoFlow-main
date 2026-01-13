@@ -1,5 +1,4 @@
 import express from 'express';
-import path from 'path';
 import qrcode from 'qrcode-terminal';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
@@ -7,809 +6,194 @@ const { Client, LocalAuth } = pkg;
 const app = express();
 app.use(express.json());
 
-// Serve frontend built by Vite from /dist (only for non-API routes)
-app.use(express.static(path.join(process.cwd(), 'dist')));
-// Only serve index for non-/api paths to avoid catching API routes during tests
-app.get(/^\/(?!api).*/, (req, res) => {
-  const index = path.join(process.cwd(), 'dist', 'index.html');
-  if (require('fs').existsSync(index)) return res.sendFile(index);
-  res.status(404).send('Not Found');
-});
-
-// In-memory POC data (mirrors TestChat seeds)
-const services = [ { id: 's1', title: 'Limpeza de Pele', durationMinutes: 60, locationId: 'l1' } ];
-const availabilityList = [
-  { professionalId: 'p1', start: '2025-12-26T09:00:00.000Z', end: '2025-12-26T17:00:00.000Z' },
-  { professionalId: 'p2', start: '2025-12-26T09:00:00.000Z', end: '2025-12-26T12:00:00.000Z' }
-];
-const appointments = [];
-
-function toTs(iso) { return new Date(iso).getTime(); }
-function rangesOverlap(a0, a1, b0, b1) { return Math.max(a0, b0) < Math.min(a1, b1); }
-
-function findNextAvailableSlot(availability, appointmentsList, durationMinutes, fromISO) {
-  const fromTs = fromISO ? toTs(fromISO) : Date.now();
-  const durationMs = durationMinutes * 60 * 1000;
-
-  const windows = availability
-    .map(w => ({ ...w, startTs: toTs(w.start), endTs: toTs(w.end) }))
-    .filter(w => w.endTs > fromTs)
-    .sort((a, b) => a.startTs - b.startTs);
-
-  for (const w of windows) {
-    let candidateStart = Math.max(w.startTs, fromTs);
-    while (candidateStart + durationMs <= w.endTs) {
-      const candidateEnd = candidateStart + durationMs;
-      const candidateStartISO = new Date(candidateStart).toISOString();
-      const candidateEndISO = new Date(candidateEnd).toISOString();
-
-      const conflict = appointmentsList.some(a => a.professionalId === w.professionalId && a.status !== 'CANCELLED' && rangesOverlap(toTs(a.start), toTs(a.end), toTs(candidateStartISO), toTs(candidateEndISO)));
-      if (!conflict) {
-        return { start: candidateStartISO, end: candidateEndISO };
-      }
-
-      // advance by 5 minutes
-      candidateStart += 5 * 60 * 1000;
-    }
-  }
-  return null;
-}
-
-// In tests, avoid creating or initializing the WhatsApp client which tries to access /data.
-if (process.env.NODE_ENV === 'test') {
-  process.env.SKIP_WHATSAPP = '1';
-  process.env.WHATSAPP_SESSION_DIR = process.env.WHATSAPP_SESSION_DIR || '/tmp/whatsapp-session';
-}
-
-// WhatsApp client
-const sessionDir = process.env.WHATSAPP_SESSION_DIR || '/data/whatsapp';
-const puppeteerExecutable = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
-
+// WhatsApp client configuration
+const sessionDir = process.env.WHATSAPP_SESSION_DIR || './data/whatsapp-sessions';
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: 'autoflow-poc', dataPath: sessionDir }),
-  puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'], executablePath: puppeteerExecutable }
+  authStrategy: new LocalAuth({ clientId: 'autoflow', dataPath: sessionDir }),
+  puppeteer: { 
+    headless: true, 
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
 });
 
-client.on('qr', qr => {
+// Estado para API
+let currentQrCode = null;
+const recentMessages = [];
+
+// WhatsApp Events
+client.on('qr', (qr) => {
+  currentQrCode = qr;
   qrcode.generate(qr, { small: true });
-  console.log('Escaneie o QR acima com o WhatsApp (Configurar > Dispositivos).');
+  console.log('📱 QR Code gerado! Escan eie com WhatsApp.');
 });
 
-client.on('ready', () => console.log('WhatsApp client ready!'));
+client.on('ready', () => {
+  currentQrCode = null;
+  console.log('✅ WhatsApp conectado e pronto!');
+});
 
-import { detectIntent } from '../../server/intentService.js';
+client.on('authenticated', () => {
+  console.log('🔐 WhatsApp autenticado!');
+});
 
-client.on('message', async msg => {
+client.on('disconnected', (reason) => {
+  currentQrCode = null;
+  console.log('⚠️ WhatsApp desconectado:', reason);
+});
+
+client.on('message', async (msg) => {
   try {
-    console.log('Mensagem recebida:', msg.from, msg.body);
-    const textRaw = (msg.body || '').trim();
-    const text = textRaw.toLowerCase();
-
-    // keep explicit keyword flows for scheduling first
-    if (text.includes('agendar')) {
-      const slot = findNextAvailableSlot(availabilityList, appointments, services[0].durationMinutes, new Date().toISOString());
-      if (slot) {
-        await msg.reply(`Sugestão: ${slot.start} → ${slot.end}\nResponda CONFIRMAR para marcar.`);
-      } else {
-        await msg.reply('Nenhuma vaga disponível no momento.');
-      }
-      return;
-    }
-
-    if (text.includes('confirmar')) {
-      const slot = findNextAvailableSlot(availabilityList, appointments, services[0].durationMinutes, new Date().toISOString());
-      if (!slot) {
-        await msg.reply('Não há vagas para confirmar.');
-        return;
-      }
-      const id = `a_${Date.now()}`;
-      const appt = { id, clientId: msg.from, professionalId: 'p1', serviceId: 's1', start: slot.start, end: slot.end, status: 'CONFIRMED', createdAt: new Date().toISOString() };
-      appointments.push(appt);
-      await msg.reply(`Agendamento criado: ${id} para ${slot.start}`);
-      return;
-    }
-
-    // intent-based handling using intentHandler (PoC)
-    const { handleMessage } = await import('../../services/intentHandler.js');
-    const { runAction } = await import('../../services/actionRunner.js');
-    const { recordChatAction } = await import('../../server/chatAction.js');
-
-    const result = await handleMessage(textRaw, { chatId: msg.from });
-
-    // record the decision
-    try {
-      await recordChatAction({ chatId: msg.from, intentId: result.intent?.intentId || null, intentScore: result.intent?.score ?? null, actionType: result.action?.type || (result.clarification ? 'clarification' : 'fallback'), text: textRaw, timestamp: new Date().toISOString() });
-    } catch (err) {
-      console.error('Failed to record chat action:', err);
-    }
-
-    if (result.clarification) {
-      // store pending confirmation if a proposed action exists
-      if (result.proposedAction) {
-        try {
-          const { setPendingConfirmation } = await import('../../server/confirmation.js');
-          await setPendingConfirmation(msg.from, { action: result.proposedAction, intent: result.intent, originalText: textRaw, timestamp: new Date().toISOString() });
-        } catch (err) {
-          console.error('Failed to set pending confirmation:', err);
-        }
-      }
-      await msg.reply(result.clarification);
-      return;
-    }
-
-    // check if user replied 'sim' to confirm a previous suggestion
-    const normalized = textRaw.trim().toLowerCase();
-
-    // negative confirmations
-    if (['não', 'nao', 'n', 'na', 'nao,'].includes(normalized)) {
-      try {
-        const { clearPendingConfirmation, getPendingConfirmation } = await import('../../server/confirmation.js');
-        const pending = await getPendingConfirmation(msg.from);
-        if (pending) {
-          await clearPendingConfirmation(msg.from);
-          await msg.reply('Ok — não confirmei. Posso ajudar com outra coisa?');
-          return;
-        }
-      } catch (err) {
-        console.error('Error while handling negative confirmation:', err);
-      }
-    }
-
-    if (['sim', 's', 'claro', 'confirmar'].includes(normalized)) {
-      try {
-        const { confirmPending, getPendingConfirmation } = await import('../../server/confirmation.js');
-        const pending = await getPendingConfirmation(msg.from);
-        if (pending) {
-          const res = await confirmPending(msg.from);
-          if (res && res.ok && res.text) {
-            await msg.reply(res.text);
-            return;
-          }
-          if (res && !res.ok) {
-            await msg.reply('Ocorreu um erro ao confirmar, tente novamente mais tarde.');
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('Error while handling confirmation reply:', err);
-      }
-    }
-
-    if (result.action) {
-      const res = await runAction(result.action, { MSG_TEXT: textRaw, chatId: msg.from, intentId: result.intent?.intentId, intentScore: result.intent?.score });
-      if (res.ok && res.text) {
-        await msg.reply(res.text);
-        return;
-      }
-    }
-
-    // default fallback
-    await msg.reply('Olá! Envie "agendar" para buscar disponibilidade ou escreva sua dúvida.');
-  } catch (err) {
-    console.error('Erro no handler de mensagem:', err);
-    try { await msg.reply('Ocorreu um erro ao processar sua mensagem. Tente novamente mais tarde.'); } catch (e) {}
-  }
-});
-
-// Endpoint to send message (AutoFlow -> WhatsApp)
-app.post('/send', async (req, res) => {
-  const { to, text } = req.body;
-  if (!to || !text) return res.status(400).json({ error: 'to and text required' });
-  try {
-    await client.sendMessage(to, text);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'send_failed' });
-  }
-});
-
-// POC endpoints for AutoFlow to call locally
-app.post('/api/poc/find-availability', (req, res) => {
-  const { professionalId, serviceId, durationMinutes, fromISO } = req.body;
-  const duration = durationMinutes || (serviceId ? (services.find(s => s.id === serviceId)?.durationMinutes || 60) : 60);
-  const availability = availabilityList.filter(w => !professionalId || w.professionalId === professionalId);
-  const slot = findNextAvailableSlot(availability, appointments, duration, fromISO);
-  if (!slot) return res.json({ found: false });
-  res.json({ found: true, suggestedStart: slot.start, suggestedEnd: slot.end });
-});
-
-app.post('/api/poc/create-appointment', (req, res) => {
-  const { clientId, professionalId, serviceId, start, end } = req.body;
-  if (!clientId || !serviceId || !start || !end) {
-    return res.status(400).json({ error: 'clientId, serviceId, start, end are required' });
-  }
-  
-  const id = `a_${Date.now()}`;
-  const appointment = {
-    id,
-    clientId,
-    professionalId: professionalId || 'p1',
-    serviceId,
-    start,
-    end,
-    status: 'CONFIRMED',
-    createdAt: new Date().toISOString()
-  };
-  
-  appointments.push(appointment);
-  res.json({ success: true, appointment });
-});
-
-// Generate workflow from prompt (server-side, requires OPENAI_API_KEY in env)
-import OpenAI from 'openai';
-
-function parseJson(text) {
-  try { return JSON.parse(text); } catch {}
-  const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); } catch { return null; }
-}
-
-const TYPE_LABELS = {
-  TRIGGER: 'Gatilho',
-  ACTION: 'Ação',
-  DATA: 'Dados',
-  LOGIC: 'Lógica',
-  ERROR_HANDLER: 'Erro'
-};
-
-app.post('/api/generate', async (req, res) => {
-  try {
-    const { prompt } = req.body || {};
-    if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' });
-
-    const openai = new OpenAI({ apiKey });
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `Você é um Consultor Sênior de Crescimento para PMEs brasileiros.
-
-Sua tarefa é desenhar o fluxo de trabalho ideal focado em LUCRO e ECONOMIA DE TEMPO.
-Use termos de NEGÓCIO claros.
-
-ESTRUTURA DOS NÓS:
-1. TRIGGER: O que inicia o processo (ex: "Recebeu Mensagem", "Novo Pedido").
-2. ACTION: Uma tarefa realizada (ex: "Calcular Desconto", "Enviar Notificação").
-3. DATA: Armazenar ou buscar info (ex: "Salvar na Planilha Financeira", "Consultar Estoque").
-4. LOGIC: Uma decisão (ex: "Cliente é VIP?", "Valor acima de R$100?").
-
-REGRAS:
-- 'inputs' e 'outputs' devem ter nomes legíveis por humanos (ex: ["valor_total", "data_entrega"]).
-- 'nextSteps' deve conectar os IDs corretamente para formar um fluxo lógico.
-Responda SOMENTE com JSON no formato { "steps": [...] }.`
-        },
-        { role: 'user', content: `Pedido do cliente: "${prompt}"` }
-      ]
+    recentMessages.unshift({
+      id: msg.id._serialized,
+      from: msg.from,
+      to: msg.to,
+      body: msg.body || '',
+      timestamp: msg.timestamp,
+      hasMedia: msg.hasMedia,
+      isGroup: msg.from.includes('@g.us'),
+      author: msg.author,
+      type: msg.type
     });
-
-    const content = response.choices?.[0]?.message?.content || '';
-    const parsed = parseJson(content);
-    const steps = Array.isArray(parsed) ? parsed : (parsed?.steps || []);
-
-    const VALID_TYPES = ['TRIGGER','ACTION','DATA','LOGIC','ERROR_HANDLER'];
-    const normalized = steps.map(s => {
-      const type = VALID_TYPES.includes(s.type) ? s.type : 'ACTION';
-      return {
-        ...s,
-        type,
-        title: s.title || (TYPE_LABELS[type] || type),
-        description: s.description || '',
-        params: s.params || { inputs: [], outputs: [] },
-        nextSteps: s.nextSteps || []
-      };
-    });
-
-    res.json({ steps: normalized });
-  } catch (err) {
-    console.error('Error in /api/generate:', err);
-    res.status(500).json({ error: 'generate_failed', message: err.message || String(err) });
+    if (recentMessages.length > 100) recentMessages.splice(100);
+  } catch (e) {
+    console.error('Erro ao armazenar mensagem:', e);
   }
 });
 
-// LLM endpoint for chat/responses (with mock mode when no API key)
-app.post('/api/autoflow/llm', async (req, res) => {
+// === API Endpoints ===
+
+// Status da conexão
+app.get('/api/whatsapp/status', (req, res) => {
   try {
-    const { prompt, opts } = req.body || {};
-    if (!prompt || typeof prompt !== 'string') {
-      return res.status(400).json({ error: 'prompt required' });
-    }
-
-    const model = opts?.model || 'gpt-4o-mini';
-    const maxTokens = opts?.maxTokens || 500;
-    const systemPrompt = opts?.systemPrompt || 'Você é um assistente útil e conciso.';
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    // Modo MOCK: sem chave API (desenvolvimento/teste local)
-    if (!apiKey) {
-      console.log('[LLM Mock Mode] No OPENAI_API_KEY - returning mock response');
-      const mockResponse = `[MOCK] Resposta simulada para: "${prompt.slice(0, 50)}..."`;
-      return res.json({ 
-        response: mockResponse,
-        meta: { mock: true, model: 'mock', tokens: 0 }
-      });
-    }
-
-    // Modo PRODUÇÃO: com chave API
-    const openai = new OpenAI({ apiKey });
-    const response = await openai.chat.completions.create({
-      model,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ]
+    const state = client.info ? 'ready' : (currentQrCode ? 'qr' : 'disconnected');
+    res.json({
+      isConnected: !!client.info,
+      isReady: !!client.info,
+      batteryLevel: client.info?.battery || null,
+      phoneNumber: client.info?.wid?.user || null,
+      platform: client.info?.platform || null,
+      sessionState: state
     });
+  } catch (error) {
+    res.json({ isConnected: false, isReady: false, sessionState: 'disconnected' });
+  }
+});
 
-    const content = response.choices?.[0]?.message?.content || '';
+// QR Code atual
+app.get('/api/whatsapp/qr', (req, res) => {
+  res.json({ qrCode: currentQrCode });
+});
+
+// Conectar
+app.post('/api/whatsapp/connect', async (req, res) => {
+  try {
+    if (!client.info) {
+      client.initialize();
+    }
+    res.json({ ok: true, message: 'Inicializando conexão...' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Desconectar
+app.post('/api/whatsapp/disconnect', async (req, res) => {
+  try {
+    await client.destroy();
+    currentQrCode = null;
+    res.json({ ok: true, message: 'Desconectado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Logout (remove sessão)
+app.post('/api/whatsapp/logout', async (req, res) => {
+  try {
+    await client.logout();
+    currentQrCode = null;
+    res.json({ ok: true, message: 'Sessão removida' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Enviar mensagem
+app.post('/api/whatsapp/send', async (req, res) => {
+  try {
+    const { to, message } = req.body;
+    if (!to || !message) {
+      return res.status(400).json({ error: 'Parâmetros "to" e "message" são obrigatórios' });
+    }
+    const chatId = to.includes('@') ? to : `${to}@c.us`;
+    const sent = await client.sendMessage(chatId, message);
     res.json({ 
-      response: content,
-      meta: { 
-        mock: false, 
-        model, 
-        tokens: response.usage?.total_tokens || 0 
-      }
+      ok: true,
+      id: sent.id._serialized, 
+      timestamp: sent.timestamp 
     });
-  } catch (err) {
-    console.error('Error in /api/autoflow/llm:', err);
-    res.status(500).json({ 
-      error: 'llm_failed', 
-      message: err.message || String(err) 
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mensagens recentes
+app.get('/api/whatsapp/messages', (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  res.json({ messages: recentMessages.slice(0, limit) });
+});
+
+// Listar contatos
+app.get('/api/whatsapp/contacts', async (req, res) => {
+  try {
+    const contacts = await client.getContacts();
+    res.json({ 
+      contacts: contacts.map(c => ({
+        id: c.id._serialized,
+        name: c.name || c.pushname || c.number,
+        number: c.number,
+        isMyContact: c.isMyContact,
+        isBlocked: c.isBlocked
+      }))
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Simulate given steps and optional userMessage using OpenAI on server
-app.post('/api/simulate', async (req, res) => {
+// Listar grupos
+app.get('/api/whatsapp/groups', async (req, res) => {
   try {
-    const { steps, userMessage, variables } = req.body || {};
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY on server' });
-    const openai = new OpenAI({ apiKey });
-
-    const system = `Você é o motor de execução AutoFlow. Seu objetivo é SIMULAR uma conversa real entre a automação e o cliente final.\n\nFLUXO ATUAL: ${JSON.stringify(steps || [])}\n\nResponda SOMENTE com JSON no formato {"userMessage":"...","actionName":"...","actionDescription":"...","stepId":"...","newVariables":{}}.`;
-    const messages = [
-      { role: 'system', content: system },
-      { role: 'user', content: userMessage || 'Inicie a simulação.' }
-    ];
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages
+    const chats = await client.getChats();
+    const groups = chats.filter(c => c.isGroup);
+    res.json({ 
+      groups: groups.map(g => ({
+        id: g.id._serialized,
+        name: g.name
+      }))
     });
-
-    const content = response.choices?.[0]?.message?.content || '{}';
-    const parsed = parseJson(content);
-    if (!parsed) {
-      console.warn('server /api/simulate: model did not return JSON; using raw content as userMessage', content);
-      return res.json({ result: { userMessage: String(content || '').trim(), stepId: trigger?.id || null } });
-    }
-    res.json({ result: parsed });
-  } catch (err) {
-    console.error('Error in /api/simulate:', err);
-    res.status(500).json({ error: 'simulate_failed', message: err.message || String(err) });
-  }
-});
-// Proxy to call external APIs from the server. Replaces {{SECRET:NAME}} and {{var}} placeholders.
-app.post('/api/proxy', async (req, res) => {
-  try {
-    const { api, variables } = req.body || {};
-    if (!api || !api.url) return res.status(400).json({ error: 'api.url required' });
-
-    const u = new URL(api.url);
-    const host = u.hostname;
-    // Basic safety: block local addresses
-    if (host === 'localhost' || host === '127.0.0.1' || /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])/.test(host)) {
-      return res.status(403).json({ error: 'forbidden_host' });
-    }
-
-    const method = (api.method || 'GET').toUpperCase();
-
-    const headers = {};
-    (api.headers || []).forEach(h => {
-      let val = String(h.value || '');
-      // replace secret placeholders {{SECRET:NAME}}
-      val = val.replace(/\{\{SECRET:([\w_-]+)\}\}/g, (_, name) => process.env[name] || '');
-      // replace variables {{var}}
-      val = val.replace(/\{\{([\w_]+)\}\}/g, (_, v) => String((variables || {})[v] ?? ''));
-      if (h.name) headers[h.name] = val;
-    });
-
-    if (api.auth && api.auth.type === 'bearer' && api.auth.secretRef) {
-      const secret = process.env[api.auth.secretRef] || '';
-      headers['Authorization'] = `Bearer ${secret}`;
-    }
-
-    let body = undefined;
-    if (api.bodyTemplate && ['POST','PUT','PATCH','DELETE'].includes(method)) {
-      let tpl = String(api.bodyTemplate || '');
-      tpl = tpl.replace(/\{\{SECRET:([\w_-]+)\}\}/g, (_, name) => process.env[name] || '');
-      tpl = tpl.replace(/\{\{([\w_]+)\}\}/g, (_, v) => JSON.stringify((variables || {})[v] ?? '').replace(/^"|"$/g, ''));
-      try { body = JSON.parse(tpl); } catch { body = tpl; }
-    }
-
-    const controller = new AbortController();
-    const timeout = (api.timeoutMs && Number(api.timeoutMs)) || 5000;
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const fetchRes = await fetch(api.url, { method, headers, body: body && (typeof body === 'string' ? body : JSON.stringify(body)), signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    const text = await fetchRes.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch {}
-
-    const outputs = {};
-    (api.responseMapping || []).forEach(m => {
-      try {
-        const parts = (m.jsonPath || '').split('.');
-        let cur = json;
-        for (const p of parts) { if (cur == null) break; cur = cur[p]; }
-        outputs[m.outputKey] = cur == null ? text : cur;
-      } catch { outputs[m.outputKey] = text; }
-    });
-
-    res.json({ status: fetchRes.status, headers: Object.fromEntries(fetchRes.headers ? fetchRes.headers.entries() : []), body: json || text, outputs });
-  } catch (err) {
-    console.error('Error in /api/proxy:', err);
-    res.status(500).json({ error: 'proxy_failed', message: err.message || String(err) });
-  }
-});// Metrics endpoint (protected)
-app.get('/api/metrics', requireApiKey, async (req, res) => {
-  try {
-    const { getAll } = await import('../../server/metrics.js');
-    res.json(getAll());
-  } catch (err) {
-    res.status(500).json({ error: 'metrics_unavailable' });
-  }
-});
-// --- Admin Endpoints (Tags / Funnels / Status) ---
-app.get('/api/admin/tags/:chatId', requireApiKey, async (req, res) => {
-  try {
-    const { getTags } = await import('../../server/tags.js');
-    const tags = await getTags(req.params.chatId);
-    res.json({ tags });
-  } catch (err) {
-    res.status(500).json({ error: 'tags_unavailable' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/admin/tags/:chatId', requireApiKey, async (req, res) => {
-  const { tag } = req.body || {};
-  if (!tag) return res.status(400).json({ error: 'tag_required' });
-  try {
-    const { addTag } = await import('../../server/tags.js');
-    const tags = await addTag(req.params.chatId, tag);
-    res.json({ tags });
-  } catch (err) {
-    res.status(500).json({ error: 'tag_add_failed' });
-  }
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'whatsapp-api' });
 });
 
-// ChatGuru apply forwarding endpoint
-app.post('/api/autoflow/apply', async (req, res) => {
-  try {
-    const { bot_id: botId, patch, mode = 'draft' } = req.body || {};
-    if (!botId || !patch) return res.status(400).json({ error: 'bot_id and patch required' });
-
-    const base = process.env.CHATGURU_BASE_URL;
-    const apiKey = process.env.CHATGURU_API_KEY;
-
-    // If ChatGuru not configured, act as a local stub (applied)
-    if (!base) return res.json({ ok: true, applied: true });
-
-    // Prepare transformed patch (add link-based contexts and entry conditions)
-    const transformed = JSON.parse(JSON.stringify(patch || {}));
-    if (Array.isArray(transformed.links) && Array.isArray(transformed.dialogs)) {
-      for (const link of transformed.links) {
-        const srcNode = link.source_node;
-        const tgtNode = link.target_node;
-        const src = transformed.dialogs.find(d => d.dialog_node === srcNode);
-        const tgt = transformed.dialogs.find(d => d.dialog_node === tgtNode);
-        if (src) {
-          src.context = src.context || {};
-          src.context[`${srcNode}__${tgtNode}`] = true;
-        }
-        if (tgt) {
-          tgt.conditions_entry_contexts = tgt.conditions_entry_contexts || [];
-          const cond = `$${srcNode}__${tgtNode}==True`;
-          if (!tgt.conditions_entry_contexts.includes(cond)) tgt.conditions_entry_contexts.push(cond);
-        }
-      }
-    }
-
-    const url = `${String(base || '').replace(/\/$/, '')}/api/autoflow/apply`;
-    const maxRetries = Math.max(1, Number(process.env.CHATGURU_MAX_RETRIES || 1));
-    const baseMs = Math.max(1, Number(process.env.CHATGURU_RETRY_BASE_MS || 1000));
-
-    let attempt = 0;
-    let lastErr = null;
-    while (attempt < maxRetries) {
-      attempt++;
-      try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-        const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ bot_id: botId, patch: transformed, mode }) });
-        if (r.ok) {
-          let body = null;
-          try { body = await r.json(); } catch { body = await r.text(); }
-          return res.json({ ok: true, forwarded: true, result: body });
-        }
-        lastErr = new Error(`ChatGuru returned status ${r.status}`);
-      } catch (err) {
-        lastErr = err;
-      }
-      // backoff
-      if (attempt < maxRetries) {
-        const wait = baseMs * Math.pow(2, attempt - 1);
-        await new Promise((r) => setTimeout(r, wait));
-      }
-    }
-
-    return res.status(502).json({ ok: false, error: 'chatguru_failed', message: lastErr?.message || 'unknown' });
-  } catch (err) {
-    console.error('Error in /api/autoflow/apply:', err);
-    res.status(500).json({ error: 'apply_failed', message: String(err) });
-  }
-});
-
-app.delete('/api/admin/tags/:chatId/:tag', requireApiKey, async (req, res) => {
-  try {
-    const { removeTag } = await import('../../server/tags.js');
-    const ok = await removeTag(req.params.chatId, req.params.tag);
-    res.json({ ok });
-  } catch (err) {
-    res.status(500).json({ error: 'tag_remove_failed' });
-  }
-});
-
-app.get('/api/admin/funnels', requireApiKey, async (req, res) => {
-  try {
-    const db = await import('../../server/db.js');
-    res.json(db.default.data?.funnels || {});
-  } catch (err) {
-    res.status(500).json({ error: 'funnels_unavailable' });
-  }
-});
-
-// Agents management (CRUD, availability)
-app.get('/api/admin/agents', requireApiKey, async (req, res) => {
-  try {
-    const { listAgents } = await import('../../server/agents.js');
-    const agents = await listAgents();
-    res.json({ agents });
-  } catch (err) { res.status(500).json({ error: 'agents_unavailable' }); }
-});
-
-app.post('/api/admin/agents', requireApiKey, async (req, res) => {
-  const { id, name } = req.body || {};
-  if (!id) return res.status(400).json({ error: 'id_required' });
-  try {
-    const { addAgent } = await import('../../server/agents.js');
-    const a = await addAgent(id, name || id);
-    res.json(a);
-  } catch (err) { res.status(500).json({ error: 'add_agent_failed' }); }
-});
-
-app.delete('/api/admin/agents/:id', requireApiKey, async (req, res) => {
-  try {
-    const { removeAgent } = await import('../../server/agents.js');
-    const ok = await removeAgent(req.params.id);
-    res.json({ ok });
-  } catch (err) { res.status(500).json({ error: 'remove_agent_failed' }); }
-});
-
-app.post('/api/admin/agents/:id/status', requireApiKey, async (req, res) => {
-  const { available } = req.body || {};
-  if (available === undefined) return res.status(400).json({ error: 'available_required' });
-  try {
-    const { setAgentAvailability } = await import('../../server/agents.js');
-    const a = await setAgentAvailability(req.params.id, !!available);
-    if (!a) return res.status(404).json({ error: 'not_found' });
-    res.json(a);
-  } catch (err) { res.status(500).json({ error: 'set_availability_failed' }); }
-});
-
-// Agent endpoints to accept/reject delegation
-app.post('/api/agents/:id/accept', async (req, res) => {
-  const agentId = req.params.id;
-  const { chatId } = req.body || {};
-  if (!chatId) return res.status(400).json({ error: 'chatId_required' });
-  try {
-    const { getChatAssignment, acceptAssignment } = await import('../../server/agents.js');
-    const { recordChatAction } = await import('../../server/chatAction.js');
-    const assignment = await getChatAssignment(chatId);
-    if (!assignment || assignment.agentId !== agentId) return res.status(404).json({ error: 'assignment_not_found' });
-    const ok = await acceptAssignment(chatId, agentId);
-    if (!ok) return res.status(500).json({ error: 'accept_failed' });
-    try { const { setChatStatus } = await import('../../server/status.js'); await setChatStatus(chatId, `in_conversation:${agentId}`); } catch (e) {}
-    await recordChatAction({ chatId, intentId: null, intentScore: null, actionType: 'AGENT_ACCEPT', text: `accepted_by:${agentId}`, timestamp: new Date().toISOString() });
-    res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: 'accept_exception' }); }
-});
-
-app.post('/api/agents/:id/reject', async (req, res) => {
-  const agentId = req.params.id;
-  const { chatId } = req.body || {};
-  if (!chatId) return res.status(400).json({ error: 'chatId_required' });
-  try {
-    const { getChatAssignment, rejectAssignment, getNextAgent, assignChat } = await import('../../server/agents.js');
-    const { recordChatAction } = await import('../../server/chatAction.js');
-    const assignment = await getChatAssignment(chatId);
-    if (!assignment || assignment.agentId !== agentId) return res.status(404).json({ error: 'assignment_not_found' });
-    const ok = await rejectAssignment(chatId, agentId);
-    if (!ok) return res.status(500).json({ error: 'reject_failed' });
-    await recordChatAction({ chatId, intentId: null, intentScore: null, actionType: 'AGENT_REJECT', text: `rejected_by:${agentId}`, timestamp: new Date().toISOString() });
-    // try to reassign immediately
-    const next = await getNextAgent();
-    if (next) {
-      await assignChat(chatId, next.id);
-      try { const { forwardMessage } = await import('../../server/forward.js'); await forwardMessage(chatId, next.id, JSON.stringify({ type: 'delegation', chatId, message: `Nova delegação: ${chatId}`, agentId: next.id, instructions: 'Responda /accept ou /reject via API' })); } catch (e) {}
-    }
-    res.json({ ok: true, reassignedTo: next ? next.id : null });
-  } catch (err) { res.status(500).json({ error: 'reject_exception' }); }
-});
-
-app.post('/api/admin/funnels', requireApiKey, async (req, res) => {
-  const { id, name } = req.body || {};
-  if (!id) return res.status(400).json({ error: 'id_required' });
-  try {
-    const { createFunnel } = await import('../../server/funnels.js');
-    const funnel = await createFunnel(id, name || id);
-    res.json(funnel);
-  } catch (err) {
-    res.status(500).json({ error: 'create_funnel_failed' });
-  }
-});
-
-app.post('/api/admin/funnels/:id/steps', requireApiKey, async (req, res) => {
-  const { stepId, name } = req.body || {};
-  if (!stepId) return res.status(400).json({ error: 'stepId_required' });
-  try {
-    const { addFunnelStep } = await import('../../server/funnels.js');
-    const step = await addFunnelStep(req.params.id, stepId, name || stepId);
-    res.json(step);
-  } catch (err) {
-    res.status(500).json({ error: 'add_step_failed' });
-  }
-});
-
-app.get('/api/admin/chats/:chatId/funnel', requireApiKey, async (req, res) => {
-  try {
-    const { getChatFunnel } = await import('../../server/funnels.js');
-    const chat = await getChatFunnel(req.params.chatId);
-    res.json(chat || {});
-  } catch (err) {
-    res.status(500).json({ error: 'get_chat_funnel_failed' });
-  }
-});
-
-app.post('/api/admin/chats/:chatId/funnel', requireApiKey, async (req, res) => {
-  const { funnelId, stepId } = req.body || {};
-  if (!funnelId) return res.status(400).json({ error: 'funnelId_required' });
-  try {
-    const { setChatFunnel } = await import('../../server/funnels.js');
-    const chat = await setChatFunnel(req.params.chatId, funnelId, stepId || null);
-    res.json(chat);
-  } catch (err) {
-    res.status(500).json({ error: 'set_chat_funnel_failed' });
-  }
-});
-
-app.get('/api/admin/chats/:chatId/status', requireApiKey, async (req, res) => {
-  try {
-    const { getChatStatus } = await import('../../server/status.js');
-    const status = await getChatStatus(req.params.chatId);
-    res.json({ status });
-  } catch (err) {
-    res.status(500).json({ error: 'get_status_failed' });
-  }
-});
-
-app.post('/api/admin/chats/:chatId/status', requireApiKey, async (req, res) => {
-  const { status } = req.body || {};
-  if (!status) return res.status(400).json({ error: 'status_required' });
-  try {
-    const { setChatStatus } = await import('../../server/status.js');
-    const chat = await setChatStatus(req.params.chatId, status);
-    res.json(chat);
-  } catch (err) {
-    res.status(500).json({ error: 'set_status_failed' });
-  }
-});app.post('/api/poc/create-appointment', (req, res) => {
-  const { clientId, professionalId, serviceId, start, end } = req.body;
-  if (!professionalId || !start || !end) return res.status(400).json({ error: 'professionalId, start and end required' });
-  const id = `a_${Date.now()}`;
-  const appt = { id, clientId: clientId || null, professionalId, serviceId, start, end, status: 'CONFIRMED', createdAt: new Date().toISOString() };
-  appointments.push(appt);
-  res.json(appt);
-});
-
-// Clients management endpoints (CRUD)
-import { listClients, getClientById, createClient, updateClient, deleteClient } from '../../server/models/clients.js';
-import axios from 'axios';
-
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'dev-admin-key';
-function requireApiKey(req,res,next){
-  const k = req.headers['x-api-key'];
-  if (k !== ADMIN_API_KEY) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}
-
-app.get('/api/clients', requireApiKey, (req,res)=> {
-  res.json(listClients());
-});
-app.get('/api/clients/:id', requireApiKey, (req,res)=> {
-  const c = getClientById(req.params.id);
-  if (!c) return res.status(404).json({ error: 'not_found' });
-  res.json(c);
-});
-app.post('/api/clients', requireApiKey, async (req,res)=>{
-  const { name, provider, creds, phoneNumberId } = req.body;
-  if (!name || !provider) return res.status(400).json({ error: 'name and provider required' });
-  const c = await createClient({ name, provider, creds, phoneNumberId });
-  res.json(c);
-});
-app.put('/api/clients/:id', requireApiKey, async (req,res)=>{
-  const updated = await updateClient(req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: 'not_found' });
-  res.json(updated);
-});
-app.delete('/api/clients/:id', requireApiKey, async (req,res)=>{
-  await deleteClient(req.params.id);
-  res.json({ ok: true });
-});
-// test connection
-app.post('/api/clients/:id/test', requireApiKey, async (req,res)=>{
-  const c = getClientById(req.params.id);
-  if (!c) return res.status(404).json({ error: 'not_found' });
-  if (c.provider === 'avisa') {
-    const apiKey = (c.creds && c.creds.apiKey) || '';
-    const phoneNumberId = c.phoneNumberId;
-    if (!apiKey || !phoneNumberId) return res.status(400).json({ error: 'missing_creds' });
-    try {
-      await axios.post('https://www.avisaapi.com.br/api/actions/sendMessage', { number: '00000000000', message: 'test' }, { headers: { 'Authorization': apiKey, 'Content-Type':'application/json' }});
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: err.response?.data || err.message });
-    }
-    return;
-  }
-  res.json({ ok: true, provider: c.provider });
-});
-
-if (!process.env.SKIP_WHATSAPP) {
-  client.initialize();
-  client.on('ready', async () => {
-    console.log('WhatsApp client ready!');
-    try {
-      const { startPeriodicCleanup } = await import('../../server/pendingCleaner.js');
-      // notifier uses client.sendMessage
-      const notifier = async (chatId, text) => {
-        try {
-          await client.sendMessage(chatId, text);
-        } catch (err) {
-          console.error('Failed to send expiration notification to', chatId, err);
-        }
-      };
-      startPeriodicCleanup(parseInt(process.env.PENDING_CLEANUP_INTERVAL || '60', 10), notifier);
-    } catch (err) {
-      console.error('Failed to start pending cleaner:', err);
-    }
-  });
-} else {
-  console.log('SKIP_WHATSAPP set; not initializing WhatsApp client (use only API endpoints).');
-}
-
+// Start server
 const PORT = process.env.PORT || process.env.WHATSAPP_PORT || 5050;
-if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => console.log(`WhatsApp connector running at http://localhost:${PORT}`));
-}
-
-export default app;
+app.listen(PORT, () => {
+  console.log(`🟢 WhatsApp API Server rodando em http://localhost:${PORT}`);
+  console.log(`📱 Aguardando conexão WhatsApp...`);
+  console.log(`🔗 Endpoints disponíveis:`);
+  console.log(`   GET  /api/whatsapp/status`);
+  console.log(`   GET  /api/whatsapp/qr`);
+  console.log(`   POST /api/whatsapp/connect`);
+  console.log(`   POST /api/whatsapp/disconnect`);
+  console.log(`   POST /api/whatsapp/send`);
+  console.log(`   GET  /api/whatsapp/messages`);
+  console.log(`   GET  /api/whatsapp/contacts`);
+  console.log(`   GET  /api/whatsapp/groups`);
+});
