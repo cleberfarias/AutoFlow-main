@@ -83,6 +83,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
         };
         return colors[service] || { border: 'border-purple-600', shadow: 'shadow-purple-600/10', accent: 'bg-purple-600' };
       }
+      case 'AI_ROUTING' as any: return { border: 'border-fuchsia-500', shadow: 'shadow-fuchsia-500/10', accent: 'bg-fuchsia-500' };
       default: return { border: 'border-slate-200', shadow: 'shadow-slate-200/10', accent: 'bg-slate-400' };
     }
   };
@@ -95,6 +96,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
     [StepType.LOGIC]: Filter,
     [StepType.ERROR_HANDLER]: AlertTriangle,
     [StepType.MCP]: Globe, // Ícone padrão para MCP
+    'AI_ROUTING': Filter, // Ícone para AI Routing
   }[step.type] || ArrowRight;
 
   const pos = step.position || { x: 0, y: 0 };

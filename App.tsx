@@ -18,6 +18,7 @@ import WorkflowsPage from './components/WorkflowsPage';
 import GenericPage from './components/GenericPage';
 import MCPHub from './components/MCPHub';
 import { MCPSelectorModal, MCPNodeCard } from './components/MCPNode';
+import AIRoutingNode from './components/AIRoutingNode';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
@@ -81,6 +82,8 @@ const App: React.FC = () => {
     canvasY?: number;
   }>({ x: 0, y: 0, visible: false });
   const [showMCPModal, setShowMCPModal] = useState(false);
+  const [showAIRoutingModal, setShowAIRoutingModal] = useState(false);
+  const [editingAIRoutingStep, setEditingAIRoutingStep] = useState<WorkflowStep | null>(null);
 
   // Guided nodes: keep track of unlocked steps (by id)
   const [unlockedSteps, setUnlockedSteps] = useState<Set<string>>(new Set());
@@ -846,7 +849,14 @@ const App: React.FC = () => {
               isLocked={!unlockedSteps.has(step.id)}
               onMove={(id, x, y) => moveStep(id, x, y)}
               onDelete={(id) => saveCurrentWorkflow(activeWorkflow.steps.filter(x => x.id !== id))}
-              onEdit={setEditingStepId}
+              onEdit={(id) => {
+                const step = activeWorkflow.steps.find(s => s.id === id);
+                if (step && (step.type as any) === 'AI_ROUTING') {
+                  setEditingAIRoutingStep(step);
+                } else {
+                  setEditingStepId(id);
+                }
+              }}
               onApiError={incrementApiErrors}
               onUpdate={(updated) => saveCurrentWorkflow(activeWorkflow.steps.map(s => s.id === updated.id ? updated : s))}
               onComplete={(id) => {
@@ -1089,6 +1099,38 @@ const App: React.FC = () => {
 
               <div className="border-t border-slate-700 my-1.5"></div>
 
+              {/* Opção AI Routing */}
+              <button
+                onClick={() => {
+                  if (!activeWorkflow) return;
+                  const newStep: WorkflowStep = {
+                    id: Date.now().toString(),
+                    type: 'AI_ROUTING' as any,
+                    title: 'AI Routing',
+                    description: 'Roteamento inteligente baseado em IA',
+                    params: {
+                      routingRules: [
+                        { id: '1', condition: '', description: 'Rota Padrão', useAI: false }
+                      ],
+                      aiModel: 'gpt-4o-mini',
+                      fallbackRoute: 'continue',
+                      confidenceThreshold: 0.7
+                    },
+                    position: {
+                      x: contextMenu.canvasX ? snapToGrid(contextMenu.canvasX) : 200,
+                      y: contextMenu.canvasY ? snapToGrid(contextMenu.canvasY) : 200
+                    }
+                  };
+                  saveCurrentWorkflow([...activeWorkflow.steps, newStep]);
+                  setContextMenu({ ...contextMenu, visible: false });
+                }}
+                className="w-full text-left px-3 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm flex items-center gap-2 font-bold rounded shadow-lg transition-all transform hover:scale-105"
+              >
+                <span className="text-lg">🤖</span> AI Routing
+              </button>
+
+              <div className="border-t border-slate-700 my-1.5"></div>
+
               {/* Opção MCP - DESTACADA */}
               <button
                 onClick={() => {
@@ -1112,6 +1154,18 @@ const App: React.FC = () => {
         onClose={() => setShowMCPModal(false)}
         onSelect={handleAddMCPNode}
       />
+
+      {/* Modal AI Routing */}
+      {editingAIRoutingStep && (
+        <AIRoutingNode
+          step={editingAIRoutingStep}
+          onUpdate={(updated) => {
+            saveCurrentWorkflow(activeWorkflow.steps.map(s => s.id === updated.id ? updated : s));
+            setEditingAIRoutingStep(null);
+          }}
+          onClose={() => setEditingAIRoutingStep(null)}
+        />
+      )}
       
       <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
       {isTesting && <TestChat steps={activeWorkflow.steps} onClose={() => setIsTesting(false)} onStepActive={setActiveStepId} onApiError={incrementApiErrors} />}
