@@ -22,6 +22,7 @@ import AIRoutingNode from './components/AIRoutingNode';
 import AIRoutingPage from './components/AIRoutingPage';
 import TemplatesPage from './components/TemplatesPage';
 import VersionsPage from './components/VersionsPage';
+import LogsPage from './components/LogsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
@@ -615,7 +616,7 @@ const App: React.FC = () => {
       case 'versions':
         return <VersionsPage />;
       case 'logs':
-        return <GenericPage title={currentPage} description={`Página de ${currentPage}`} />;
+        return <LogsPage />;
       default:
         return <Dashboard clients={clients} workflows={allWorkflows} />;
     }
