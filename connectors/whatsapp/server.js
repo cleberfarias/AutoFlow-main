@@ -214,6 +214,28 @@ app.post('/api/poc/find-availability', (req, res) => {
   res.json({ found: true, suggestedStart: slot.start, suggestedEnd: slot.end });
 });
 
+app.post('/api/poc/create-appointment', (req, res) => {
+  const { clientId, professionalId, serviceId, start, end } = req.body;
+  if (!clientId || !serviceId || !start || !end) {
+    return res.status(400).json({ error: 'clientId, serviceId, start, end are required' });
+  }
+  
+  const id = `a_${Date.now()}`;
+  const appointment = {
+    id,
+    clientId,
+    professionalId: professionalId || 'p1',
+    serviceId,
+    start,
+    end,
+    status: 'CONFIRMED',
+    createdAt: new Date().toISOString()
+  };
+  
+  appointments.push(appointment);
+  res.json({ success: true, appointment });
+});
+
 // Generate workflow from prompt (server-side, requires OPENAI_API_KEY in env)
 import OpenAI from 'openai';
 

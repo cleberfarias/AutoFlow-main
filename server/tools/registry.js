@@ -1,0 +1,131 @@
+// Tool Registry: registro e execução de tools (MCP-style)
+import fetch from 'node-fetch';
+
+export type Tool = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+  handler: (args: any, ctx: any) => Promise<any>;
+};
+
+const tools: Map<string, Tool> = new Map();
+
+// Timeout padrão para chamadas de tools (5 segundos)
+const TOOL_TIMEOUT_MS = 5000;
+
+/**
+ * Registra uma tool no registry
+ */
+export function registerTool(tool: Tool): void {
+  tools.set(tool.name, tool);
+  console.log(`[Tool Registry] Registered: ${tool.name}`);
+}
+
+/**
+ * Lista todas as tools disponíveis
+ */
+export function listTools(): Tool[] {
+  return Array.from(tools.values()).map(t => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: t.inputSchema,
+    handler: undefined as any // não expor handler na listagem
+  }));
+}
+
+/**
+ * Executa uma tool com timeout e tratamento de erro
+ */
+export async function callTool(
+  toolName: string, 
+  args: any, 
+  context: any
+): Promise<{ success: boolean; result?: any; error?: string }> {
+  const tool = tools.get(toolName);
+  
+  if (!tool) {
+    return { 
+      success: false, 
+      error: `Tool "${toolName}" not found. Available tools: ${Array.from(tools.keys()).join(', ')}` 
+    };
+  }
+
+  try {
+    // Timeout wrapper
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Tool execution timeout')), TOOL_TIMEOUT_MS)
+    );
+    
+    const resultPromise = tool.handler(args, context);
+    const result = await Promise.race([resultPromise, timeoutPromise]);
+    
+    return { success: true, result };
+  } catch (error: any) {
+    console.error(`[Tool Registry] Error calling ${toolName}:`, error);
+    return { 
+      success: false, 
+      error: error?.message || String(error) 
+    };
+  }
+}
+
+// ============================================
+// Tools Pré-registradas (Calendar POC)
+// ============================================
+
+registerTool({
+  name: 'calendar.findAvailability',
+  description: 'Busca próxima disponibilidade no calendário para agendamento',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      serviceId: { type: 'string', description: 'ID do serviço' },
+      professionalId: { type: 'string', description: 'ID do profissional (opcional)' },
+      durationMinutes: { type: 'number', description: 'Duração em minutos' },
+      fromISO: { type: 'string', description: 'Data/hora inicial (ISO 8601)' }
+    },
+    required: []
+  },
+  handler: async (args: any) => {
+    const response = await fetch('http://localhost:5050/api/poc/find-availability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+});
+
+registerTool({
+  name: 'calendar.createAppointment',
+  description: 'Cria um novo agendamento no calendário',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      clientId: { type: 'string', description: 'ID do cliente' },
+      professionalId: { type: 'string', description: 'ID do profissional' },
+      serviceId: { type: 'string', description: 'ID do serviço' },
+      start: { type: 'string', description: 'Data/hora de início (ISO 8601)' },
+      end: { type: 'string', description: 'Data/hora de fim (ISO 8601)' }
+    },
+    required: ['clientId', 'serviceId', 'start', 'end']
+  },
+  handler: async (args: any) => {
+    const response = await fetch('http://localhost:5050/api/poc/create-appointment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+});

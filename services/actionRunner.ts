@@ -166,6 +166,72 @@ export async function runAction(action: Action, context: Record<string, any> = {
       }
     }
 
+    case 'TOOL_CALL': {
+      // Executa tools do registry MCP-style
+      const toolName = action.params?.toolName || action.params?.tool;
+      const toolArgs = action.params?.args || action.params?.arguments || {};
+      
+      if (!toolName) {
+        return { ok: false, type: 'TOOL_CALL', raw: 'missing_toolName' };
+      }
+
+      try {
+        const { callTool } = await import('../server/tools/registry.js');
+        const result = await callTool(toolName, toolArgs, context);
+        
+        if (!result.success) {
+          console.error(`[TOOL_CALL] Failed: ${toolName}`, result.error);
+          return { 
+            ok: false, 
+            type: 'TOOL_CALL', 
+            text: `Não foi possível executar ${toolName}: ${result.error}`,
+            raw: result 
+          };
+        }
+
+        // Record action
+        try {
+          const { recordChatAction } = await import('../server/chatAction.js');
+          await recordChatAction({ 
+            chatId: context.chatId || null, 
+            intentId: context.intentId || null, 
+            intentScore: context.intentScore ?? null, 
+            actionType: 'TOOL_CALL', 
+            text: `${toolName}(${JSON.stringify(toolArgs)})`, 
+            timestamp: new Date().toISOString() 
+          });
+        } catch (err) {
+          // ignore recording failures
+        }
+
+        // Metrics
+        try {
+          const { increment } = await import('../server/metrics.js');
+          increment('actions_executed', 1);
+        } catch (e) {
+          try {
+            globalThis.__AUTOFLOW_METRICS__ = globalThis.__AUTOFLOW_METRICS__ || {};
+            globalThis.__AUTOFLOW_METRICS__.actions_executed = (globalThis.__AUTOFLOW_METRICS__.actions_executed || 0) + 1;
+          } catch (e2) {}
+        }
+
+        return { 
+          ok: true, 
+          type: 'TOOL_CALL', 
+          text: `Tool ${toolName} executada com sucesso`,
+          raw: result.result 
+        };
+      } catch (err: any) {
+        console.error('[TOOL_CALL] Exception:', err);
+        return { 
+          ok: false, 
+          type: 'TOOL_CALL', 
+          text: 'Erro ao executar ferramenta',
+          raw: err?.message || String(err) 
+        };
+      }
+    }
+
     default:
       return { ok: false, type: 'unsupported' };
   }
