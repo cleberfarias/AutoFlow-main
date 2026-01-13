@@ -25,6 +25,7 @@ import VersionsPage from './components/VersionsPage';
 import LogsPage from './components/LogsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 import { logger } from './services/logger';
+import { versionControl } from './services/versionControl';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
@@ -450,6 +451,18 @@ const App: React.FC = () => {
       setActiveClient(updatedClient);
       setActiveWorkflow(newWorkflow);
       
+      // Criar versão inicial do workflow
+      versionControl.createVersion(
+        newWorkflow.id,
+        name,
+        [],
+        targetClient.name,
+        {
+          description: 'Versão inicial do workflow',
+          tag: 'development'
+        }
+      );
+      
       // Log workflow creation
       logger.success('Novo workflow criado', {
         workflow: name,
@@ -487,6 +500,24 @@ const App: React.FC = () => {
     saveToDB(updatedClients);
     setActiveWorkflow(updatedWorkflow);
     setActiveClient(updatedClient);
+    
+    // Criar versão automática a cada alteração significativa
+    const currentVersion = versionControl.getCurrentVersion(activeWorkflow.id);
+    const shouldCreateVersion = !currentVersion || 
+      (currentVersion.steps.length !== updatedSteps.length) ||
+      (updatedSteps.length > 0 && Math.random() < 0.3); // 30% de chance para evitar versões excessivas
+    
+    if (shouldCreateVersion) {
+      versionControl.createVersion(
+        activeWorkflow.id,
+        activeWorkflow.name,
+        updatedSteps,
+        activeClient.name,
+        {
+          autoArchive: true
+        }
+      );
+    }
     
     // Log workflow update
     logger.success('Workflow atualizado', {

@@ -1,27 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   GitBranch, Clock, User, Tag, RotateCcw, GitCommit, 
   ChevronRight, Eye, Download, Play, AlertCircle, CheckCircle2,
   Plus, Minus, Edit3, Trash2, Save, History
 } from 'lucide-react';
-
-interface Version {
-  id: string;
-  workflowName: string;
-  version: string;
-  tag?: string;
-  description: string;
-  author: string;
-  timestamp: string;
-  changes: {
-    added: number;
-    modified: number;
-    removed: number;
-  };
-  status: 'active' | 'archived' | 'draft';
-  isCurrent: boolean;
-  stepsCount: number;
-}
+import { versionControl, WorkflowVersion } from '../services/versionControl';
 
 export default function VersionsPage() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('all');
@@ -183,9 +166,12 @@ export default function VersionsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+            >
               <GitCommit size={20} />
-              Comparar
+              Exportar
             </button>
             <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-violet-500/20 transition-all">
               <Save size={20} />
