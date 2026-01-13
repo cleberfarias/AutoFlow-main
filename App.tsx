@@ -21,6 +21,7 @@ import { MCPSelectorModal, MCPNodeCard } from './components/MCPNode';
 import AIRoutingNode from './components/AIRoutingNode';
 import AIRoutingPage from './components/AIRoutingPage';
 import TemplatesPage from './components/TemplatesPage';
+import VersionsPage from './components/VersionsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
@@ -612,6 +613,7 @@ const App: React.FC = () => {
       case 'templates':
         return <TemplatesPage />;
       case 'versions':
+        return <VersionsPage />;
       case 'logs':
         return <GenericPage title={currentPage} description={`Página de ${currentPage}`} />;
       default:
