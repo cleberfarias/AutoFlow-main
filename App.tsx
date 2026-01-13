@@ -606,6 +606,7 @@ const App: React.FC = () => {
       case 'mcp-hub':
         return <MCPHub />;
       case 'ai-routing':
+        return <AIRoutingPage />;
       case 'templates':
       case 'versions':
       case 'logs':
