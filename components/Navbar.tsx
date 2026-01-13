@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Workflow, Zap, Boxes, BookTemplate, 
   GitBranch, FileText, Settings, ChevronDown, LogOut 
 } from 'lucide-react';
+import { t } from '../services/i18n';
 
 interface NavbarProps {
   currentPage: string;
@@ -17,13 +18,14 @@ export default function Navbar({ currentPage, onPageChange, onLogout }: NavbarPr
   console.log('Navbar renderizado! Página atual:', currentPage);
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'workflows', label: 'Workflows', icon: Workflow },
-    { id: 'ai-routing', label: 'AI Routing', icon: Zap },
-    { id: 'mcp-hub', label: 'MCP Hub', icon: Boxes },
-    { id: 'templates', label: 'Templates', icon: BookTemplate },
-    { id: 'versions', label: 'Versões', icon: GitBranch },
-    { id: 'logs', label: 'Logs', icon: FileText },
+    { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { id: 'workflows', label: t('nav.workflows'), icon: Workflow },
+    { id: 'ai-routing', label: t('nav.aiRouting'), icon: Zap },
+    { id: 'mcp-hub', label: t('nav.mcpHub'), icon: Boxes },
+    { id: 'templates', label: t('nav.templates'), icon: BookTemplate },
+    { id: 'versions', label: t('nav.versions'), icon: GitBranch },
+    { id: 'logs', label: t('nav.logs'), icon: FileText },
+    { id: 'settings', label: t('nav.settings'), icon: Settings },
   ];
 
   return (
@@ -66,23 +68,15 @@ export default function Navbar({ currentPage, onPageChange, onLogout }: NavbarPr
         })}
       </nav>
 
-      {/* Footer - Settings and Logout */}
+      {/* Footer - Logout */}
       <div className="border-t border-slate-800 p-3 space-y-2">
-        <button
-          onClick={() => setShowUserMenu(!showUserMenu)}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
-          title={isCollapsed ? 'Configurações' : ''}
-        >
-          <Settings size={20} className="flex-shrink-0" />
-          {!isCollapsed && <span className="text-sm font-medium">Configurações</span>}
-        </button>
         <button
           onClick={onLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
-          title={isCollapsed ? 'Sair' : ''}
+          title={isCollapsed ? t('common.logout') : ''}
         >
           <LogOut size={20} className="flex-shrink-0" />
-          {!isCollapsed && <span className="text-sm font-medium">Sair</span>}
+          {!isCollapsed && <span className="text-sm font-medium">{t('common.logout')}</span>}
         </button>
       </div>
 

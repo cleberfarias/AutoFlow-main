@@ -23,10 +23,13 @@ import AIRoutingPage from './components/AIRoutingPage';
 import TemplatesPage from './components/TemplatesPage';
 import VersionsPage from './components/VersionsPage';
 import LogsPage from './components/LogsPage';
+import SettingsPage from './components/SettingsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 import { logger } from './services/logger';
 import { versionControl } from './services/versionControl';
 import { templateManager } from './services/templateManager';
+import { settingsManager } from './services/settingsManager';
+import { i18n } from './services/i18n';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
@@ -106,6 +109,18 @@ const App: React.FC = () => {
       metadata: { errorCount: n }
     });
   };
+
+  // Inicializar configurações e idioma
+  useEffect(() => {
+    const unsubscribe = settingsManager.subscribe((settings) => {
+      i18n.setLanguage(settings.language);
+    });
+
+    // Aplicar idioma inicial
+    i18n.setLanguage(settingsManager.getSettings().language);
+
+    return unsubscribe;
+  }, []);
 
   // Initialize unlocked steps when a workflow is loaded or changed
   useEffect(() => {
@@ -707,6 +722,8 @@ const App: React.FC = () => {
         return <VersionsPage />;
       case 'logs':
         return <LogsPage />;
+      case 'settings':
+        return <SettingsPage />;
       default:
         return <Dashboard clients={clients} workflows={allWorkflows} />;
     }
