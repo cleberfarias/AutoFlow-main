@@ -7,22 +7,73 @@ interface DashboardProps {
   onCreateWorkflow?: () => void;
 }
 
+// Função para calcular dias desde criação
+function getDaysAgo(timestamp: number): string {
+  const days = Math.floor((Date.now() - timestamp) / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'Hoje';
+  if (days === 1) return 'Ontem';
+  if (days < 7) return `Há ${days} dias`;
+  if (days < 30) return `Há ${Math.floor(days / 7)} semanas`;
+  return `Há ${Math.floor(days / 30)} meses`;
+}
+
+// Função para calcular estatísticas reais
+function calculateStats(workflows: any[]) {
+  const totalWorkflows = workflows.length;
+  
+  // Contar total de nós em todos os workflows
+  const totalSteps = workflows.reduce((sum, w) => sum + (w.steps?.length || 0), 0);
+  
+  // Contar nós MCP (integrações)
+  const mcpSteps = workflows.reduce((sum, w) => {
+    const mcpCount = w.steps?.filter((s: any) => s.type === 'MCP').length || 0;
+    return sum + mcpCount;
+  }, 0);
+  
+  // Contar workflows com API configurada
+  const workflowsWithAPI = workflows.filter(w => 
+    w.steps?.some((s: any) => s.params?.api?.url)
+  ).length;
+  
+  // Calcular workflows recentes (últimos 7 dias)
+  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+  const recentWorkflows = workflows.filter(w => 
+    w.lastModified && w.lastModified > sevenDaysAgo
+  ).length;
+  
+  // Taxa de automação = workflows com integrações / total
+  const automationRate = totalWorkflows > 0 
+    ? Math.round((workflowsWithAPI / totalWorkflows) * 100) 
+    : 0;
+  
+  // Custo estimado (R$0.002 por step em média - GPT-4 pricing aproximado)
+  const estimatedCost = totalSteps * 0.002;
+  
+  return {
+    totalWorkflows,
+    totalSteps,
+    mcpSteps,
+    recentWorkflows,
+    automationRate,
+    estimatedCost: Math.round(estimatedCost * 100) / 100,
+    workflowsWithAPI,
+  };
+}
+
 export default function Dashboard({ clients, workflows, onCreateWorkflow }: DashboardProps) {
   const [stats, setStats] = useState({
     totalWorkflows: 0,
-    executionsToday: 0,
-    averageCost: 0,
+    totalSteps: 0,
+    mcpSteps: 0,
+    recentWorkflows: 0,
     automationRate: 0,
+    estimatedCost: 0,
+    workflowsWithAPI: 0,
   });
 
   useEffect(() => {
-    // Calcular estatísticas baseado nos dados
-    setStats({
-      totalWorkflows: workflows?.length || 0,
-      executionsToday: Math.floor(Math.random() * 5000),
-      averageCost: Math.floor(Math.random() * 500),
-      automationRate: Math.floor(Math.random() * 30) + 70,
-    });
+    const calculated = calculateStats(workflows || []);
+    setStats(calculated);
   }, [workflows]);
 
   return (
@@ -46,31 +97,35 @@ export default function Dashboard({ clients, workflows, onCreateWorkflow }: Dash
         {[
           {
             icon: Zap,
-            label: 'Workflows Ativos',
+            label: 'Workflows Criados',
             value: stats.totalWorkflows,
-            change: '+2 esta semana',
+            change: stats.recentWorkflows > 0 ? `+${stats.recentWorkflows} esta semana` : 'Nenhum recente',
             color: 'from-blue-600 to-blue-400',
+            changeColor: stats.recentWorkflows > 0 ? 'text-green-400' : 'text-slate-500',
           },
           {
             icon: Clock,
-            label: 'Execuções Hoje',
-            value: stats.executionsToday.toLocaleString('pt-BR'),
-            change: '+15%',
+            label: 'Total de Nós',
+            value: stats.totalSteps.toLocaleString('pt-BR'),
+            change: `${stats.mcpSteps} integrações MCP`,
             color: 'from-cyan-600 to-cyan-400',
+            changeColor: 'text-cyan-400',
           },
           {
             icon: BarChart3,
-            label: 'Custo IA (mês)',
-            value: `R$ ${stats.averageCost}`,
-            change: '-23%',
+            label: 'Custo Estimado/mês',
+            value: `R$ ${stats.estimatedCost.toFixed(2)}`,
+            change: `${stats.totalSteps} steps × R$0.002`,
             color: 'from-emerald-600 to-emerald-400',
+            changeColor: 'text-emerald-400',
           },
           {
             icon: TrendingUp,
             label: 'Taxa Automação',
             value: `${stats.automationRate}%`,
-            change: '+12%',
+            change: `${stats.workflowsWithAPI} com API`,
             color: 'from-purple-600 to-purple-400',
+            changeColor: 'text-purple-400',
           },
         ].map((stat, idx) => {
           const Icon = stat.icon;
@@ -84,7 +139,7 @@ export default function Dashboard({ clients, workflows, onCreateWorkflow }: Dash
               </div>
               <p className="text-slate-400 text-sm mb-2">{stat.label}</p>
               <p className="text-3xl font-bold text-white mb-2">{stat.value}</p>
-              <p className="text-xs text-green-400 font-semibold">{stat.change}</p>
+              <p className={`text-xs font-semibold ${stat.changeColor || 'text-green-400'}`}>{stat.change}</p>
             </div>
           );
         })}
@@ -113,15 +168,21 @@ export default function Dashboard({ clients, workflows, onCreateWorkflow }: Dash
                   <div>
                     <p className="font-semibold text-white">{workflow.name || 'Workflow sem nome'}</p>
                     <p className="text-xs text-slate-400">
-                      {workflow.steps?.length || 0} etapas • Criado há 2 dias
+                      {workflow.steps?.length || 0} nós • {getDaysAgo(workflow.lastModified || Date.now())}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="inline-flex items-center px-3 py-1 bg-green-600/20 text-green-400 text-xs font-semibold rounded-full">
-                    ● Ativo
-                  </span>
-                  <span className="text-slate-400 text-sm font-semibold">98.5%</span>
+                  {workflow.steps?.some((s: any) => s.params?.api?.url || s.type === 'MCP') ? (
+                    <span className="inline-flex items-center px-3 py-1 bg-teal-600/20 text-teal-400 text-xs font-semibold rounded-full">
+                      ● Integrado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-3 py-1 bg-slate-600/20 text-slate-400 text-xs font-semibold rounded-full">
+                      ○ Draft
+                    </span>
+                  )}
+                  <span className="text-slate-400 text-sm font-semibold">{workflow.steps?.length || 0} steps</span>
                 </div>
               </div>
             ))
@@ -142,18 +203,18 @@ export default function Dashboard({ clients, workflows, onCreateWorkflow }: Dash
       {/* Grid Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Estatísticas de Uso</h3>
+          <h3 className="text-lg font-bold text-white mb-4">Resumo do Projeto</h3>
           <div className="space-y-4">
             {[
-              { label: 'Requisições API', value: '12.5K', trend: '+8%' },
-              { label: 'Tempo médio', value: '150ms', trend: '-5%' },
-              { label: 'Taxa sucesso', value: '98.5%', trend: '+2%' },
+              { label: 'Total de Clientes', value: clients.length.toString(), trend: 'ativos' },
+              { label: 'Workflows Totais', value: workflows.length.toString(), trend: `${stats.workflowsWithAPI} com API` },
+              { label: 'Integrações MCP', value: stats.mcpSteps.toString(), trend: 'nós externos' },
             ].map((stat, idx) => (
               <div key={idx} className="flex items-center justify-between pb-4 border-b border-slate-700 last:border-0">
                 <span className="text-slate-300">{stat.label}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-white">{stat.value}</span>
-                  <span className="text-xs text-green-400">{stat.trend}</span>
+                  <span className="text-xs text-slate-500">{stat.trend}</span>
                 </div>
               </div>
             ))}
