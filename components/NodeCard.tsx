@@ -21,11 +21,14 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
   const [isDragging, setIsDragging] = useState(false);
   const offset = useRef({ x: 0, y: 0 });
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Se está em modo panning, não fazer nada
     if (isPanningMode) return;
-    // Impede que o clique no card inicie o movimento de arrastar da tela (canvas)
+    
+    // Impedir que o evento chegue ao canvas
     e.stopPropagation();
     
+    // Se clicou em um botão, não iniciar drag
     if ((e.target as HTMLElement).closest('button')) return;
     
     setIsDragging(true);
@@ -36,20 +39,20 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
   };
 
   React.useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (isDragging) {
         onMove(step.id, e.clientX - offset.current.x, e.clientY - offset.current.y);
       }
     };
-    const handleMouseUp = () => setIsDragging(false);
+    const handlePointerUp = () => setIsDragging(false);
 
     if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
     }
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
     };
   }, [isDragging, onMove, step.id]);
 
@@ -154,7 +157,7 @@ const NodeCard: React.FC<NodeCardProps> = ({ step, isActive, isPanningMode, isPr
     <div
       className={`${baseClasses} ${sizeClasses} ${dragClasses} ${lockedClasses}`}
       style={{ left: pos.x, top: pos.y }}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
     >
       {/* Hide connector handles in preview mode */}
       {!isPreview && <div className={`node-handle handle-in ${theme.border}`} />}

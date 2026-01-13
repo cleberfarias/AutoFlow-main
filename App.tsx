@@ -153,6 +153,11 @@ const App: React.FC = () => {
     }
     
     const isMiddleClick = e.button === 1;
+    
+    // Se clicou em um NodeCard, não fazer nada (deixar o NodeCard lidar com o drag)
+    if ((e.target as HTMLElement).closest('.NodeCard')) {
+      return;
+    }
 
     // Grouping mode: start selection rect in canvas coords
     if (isGroupingMode) {
@@ -166,13 +171,14 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!isSpacePressed && !isMiddleClick && (e.target as HTMLElement).closest('.NodeCard')) return;
-    if (isSpacePressed) e.preventDefault();
-    setIsPanning(true);
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-
-    // Try to capture the pointer to avoid lost events when moving fast
-    try { (e.target as HTMLElement).setPointerCapture?.((e as any).pointerId); } catch {}
+    // Apenas ativar panning se for clique do meio OU se espaço estiver pressionado
+    if (isSpacePressed || isMiddleClick) {
+      e.preventDefault();
+      setIsPanning(true);
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      // Try to capture the pointer to avoid lost events when moving fast
+      try { (e.target as HTMLElement).setPointerCapture?.((e as any).pointerId); } catch {}
+    }
   };
 
   useEffect(() => {
