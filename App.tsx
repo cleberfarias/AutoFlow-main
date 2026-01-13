@@ -24,6 +24,7 @@ import TemplatesPage from './components/TemplatesPage';
 import VersionsPage from './components/VersionsPage';
 import LogsPage from './components/LogsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
+import { logger } from './services/logger';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
@@ -94,7 +95,15 @@ const App: React.FC = () => {
 
   // Local UI metric: API errors count
   const [apiErrors, setApiErrors] = useState(0);
-  const incrementApiErrors = (n = 1) => setApiErrors(v => v + n);
+  const incrementApiErrors = (n = 1) => {
+    setApiErrors(v => v + n);
+    logger.error('Erro na API', {
+      action: 'api.error',
+      user: 'Sistema',
+      details: `${n} erro(s) de API registrado(s)`,
+      metadata: { errorCount: n }
+    });
+  };
 
   // Initialize unlocked steps when a workflow is loaded or changed
   useEffect(() => {
@@ -440,6 +449,18 @@ const App: React.FC = () => {
       saveToDB(updatedClients);
       setActiveClient(updatedClient);
       setActiveWorkflow(newWorkflow);
+      
+      // Log workflow creation
+      logger.success('Novo workflow criado', {
+        workflow: name,
+        user: targetClient.name,
+        action: 'workflow.create',
+        details: `Workflow "${name}" criado com sucesso`,
+        metadata: {
+          workflowId: newWorkflow.id,
+          clientId: targetClient.id
+        }
+      });
     }
     else if (type === 'RENAME_AUTOMATION' && activeClient && id) {
       const updatedClient = {
@@ -466,6 +487,19 @@ const App: React.FC = () => {
     saveToDB(updatedClients);
     setActiveWorkflow(updatedWorkflow);
     setActiveClient(updatedClient);
+    
+    // Log workflow update
+    logger.success('Workflow atualizado', {
+      workflow: activeWorkflow.name,
+      user: activeClient.name,
+      action: 'workflow.update',
+      details: `${updatedSteps.length} passos salvos`,
+      metadata: { 
+        workflowId: activeWorkflow.id,
+        stepsCount: updatedSteps.length,
+        clientId: activeClient.id
+      }
+    });
   };
 
   const snapToGrid = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
@@ -689,12 +723,42 @@ const App: React.FC = () => {
   const handleCreateSteps = async () => {
     if (!promptValue.trim()) return;
     setIsGenerating(true);
+    const startTime = performance.now();
     try {
+      logger.info('Gerando workflow com IA', {
+        workflow: activeWorkflow?.name,
+        user: activeClient?.name || 'Sistema',
+        action: 'ai.generate',
+        details: `Prompt: "${promptValue.substring(0, 100)}..."`
+      });
+      
       const generated = await generateWorkflowFromPrompt(promptValue);
       const placed = generated.map((s, idx) => ({ ...s, position: { x: 100 + (idx * 400), y: 150 + (idx % 2 * 100) } }));
       saveCurrentWorkflow(placed);
       setPromptValue('');
-    } catch (e: any) { console.error(e); alert(e?.message || 'Erro ao gerar fluxo. Verifique o console.'); }
+      
+      const duration = (performance.now() - startTime) / 1000;
+      logger.success('Workflow gerado com IA', {
+        workflow: activeWorkflow?.name,
+        user: activeClient?.name || 'Sistema',
+        action: 'ai.generate.success',
+        duration,
+        details: `${generated.length} passos gerados com sucesso`,
+        metadata: { stepsCount: generated.length, prompt: promptValue.substring(0, 100) }
+      });
+    } catch (e: any) { 
+      const duration = (performance.now() - startTime) / 1000;
+      logger.error('Erro ao gerar workflow com IA', {
+        workflow: activeWorkflow?.name,
+        user: activeClient?.name || 'Sistema',
+        action: 'ai.generate.error',
+        duration,
+        details: e?.message || 'Erro desconhecido',
+        metadata: { error: e?.message }
+      });
+      console.error(e); 
+      alert(e?.message || 'Erro ao gerar fluxo. Verifique o console.'); 
+    }
     finally { setIsGenerating(false); }
   };
 

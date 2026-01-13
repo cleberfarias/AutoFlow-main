@@ -1,30 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, AlertCircle, CheckCircle2, Info, AlertTriangle,
   Search, Filter, Download, RefreshCw, Clock, User, 
   Zap, Database, MessageSquare, GitBranch, Eye, Trash2
 } from 'lucide-react';
-
-interface Log {
-  id: string;
-  timestamp: string;
-  level: 'info' | 'success' | 'warning' | 'error';
-  message: string;
-  workflow?: string;
-  user?: string;
-  action: string;
-  details?: string;
-  duration?: number;
-  metadata?: Record<string, any>;
-}
+import { logger, LogEntry } from '../services/logger';
 
 export default function LogsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
-  const [selectedLog, setSelectedLog] = useState<Log | null>(null);
+  const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const logs: Log[] = [
+  // Carregar logs e subscrever para atualizações
+  useEffect(() => {
+    // Carregar logs iniciais
+    setLogs(logger.getLogs());
+
+    // Subscrever para atualizações em tempo real
+    const unsubscribe = logger.subscribe((updatedLogs) => {
+      setLogs(updatedLogs);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Simular alguns logs iniciais se não houver nenhum
+  useEffect(() => {
+    if (logs.length === 0) {
+      logger.info('Sistema inicializado', {
+        action: 'system.init',
+        user: 'Sistema',
+        details: 'AutoFlow iniciado com sucesso'
+      });
+      logger.success('Workflows carregados', {
+        action: 'workflows.load',
+        user: 'Sistema',
+        details: 'Todos os workflows foram carregados da memória'
+      });
+    }
+  }, []);
+
+  const mockLogs: LogEntry[] = [
     {
       id: '1',
       timestamp: '2026-01-13T16:35:42',
@@ -159,15 +177,18 @@ export default function LogsPage() {
     }
   ];
 
+  // Usar logs reais se houver, senão usar mockLogs para demonstração
+  const displayLogs = logs.length > 0 ? logs : mockLogs;
+
   const levels = [
-    { id: 'all', label: 'Todos', color: 'slate', count: logs.length },
-    { id: 'info', label: 'Info', color: 'blue', count: logs.filter(l => l.level === 'info').length },
-    { id: 'success', label: 'Sucesso', color: 'emerald', count: logs.filter(l => l.level === 'success').length },
-    { id: 'warning', label: 'Aviso', color: 'amber', count: logs.filter(l => l.level === 'warning').length },
-    { id: 'error', label: 'Erro', color: 'rose', count: logs.filter(l => l.level === 'error').length }
+    { id: 'all', label: 'Todos', color: 'slate', count: displayLogs.length },
+    { id: 'info', label: 'Info', color: 'blue', count: displayLogs.filter(l => l.level === 'info').length },
+    { id: 'success', label: 'Sucesso', color: 'emerald', count: displayLogs.filter(l => l.level === 'success').length },
+    { id: 'warning', label: 'Aviso', color: 'amber', count: displayLogs.filter(l => l.level === 'warning').length },
+    { id: 'error', label: 'Erro', color: 'rose', count: displayLogs.filter(l => l.level === 'error').length }
   ];
 
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = displayLogs.filter(log => {
     const matchesSearch = log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          log.workflow?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -177,11 +198,44 @@ export default function LogsPage() {
   });
 
   const stats = {
-    total: logs.length,
-    info: logs.filter(l => l.level === 'info').length,
-    success: logs.filter(l => l.level === 'success').length,
-    warnings: logs.filter(l => l.level === 'warning').length,
-    errors: logs.filter(l => l.level === 'error').length
+    total: displayLogs.length,
+    info: displayLogs.filter(l => l.level === 'info').length,
+    success: displayLogs.filter(l => l.level === 'success').length,
+    warnings: displayLogs.filter(l => l.level === 'warning').length,
+    errors: displayLogs.filter(l => l.level === 'error').length
+  };
+
+  // Função para exportar logs
+  const handleExport = (format: 'json' | 'csv' = 'json') => {
+    const data = logger.exportLogs(format);
+    const blob = new Blob([data], { type: format === 'json' ? 'application/json' : 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `autoflow-logs-${new Date().toISOString().split('T')[0]}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    logger.info('Logs exportados', {
+      action: 'logs.export',
+      user: 'Usuário',
+      details: `Logs exportados em formato ${format.toUpperCase()}`,
+      metadata: { format, count: displayLogs.length }
+    });
+  };
+
+  // Função para limpar logs
+  const handleClear = () => {
+    if (confirm('Tem certeza que deseja limpar todos os logs? Esta ação não pode ser desfeita.')) {
+      logger.clear();
+      logger.info('Logs limpos', {
+        action: 'logs.clear',
+        user: 'Usuário',
+        details: 'Todos os logs foram removidos'
+      });
+    }
   };
 
   const getLevelIcon = (level: string) => {
@@ -243,11 +297,17 @@ export default function LogsPage() {
               <RefreshCw size={18} className={autoRefresh ? 'animate-spin' : ''} />
               Auto-refresh
             </button>
-            <button className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors">
+            <button 
+              onClick={() => handleExport('json')}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+            >
               <Download size={20} />
               Exportar
             </button>
-            <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/20 transition-all">
+            <button 
+              onClick={handleClear}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
+            >
               <Trash2 size={20} />
               Limpar
             </button>
@@ -560,7 +620,23 @@ export default function LogsPage() {
               >
                 Fechar
               </button>
-              <button className="flex items-center gap-2 px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors">
+              <button 
+                onClick={() => {
+                  if (selectedLog) {
+                    const data = JSON.stringify(selectedLog, null, 2);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `log-${selectedLog.id}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }
+                }}
+                className="flex items-center gap-2 px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors"
+              >
                 <Download size={18} />
                 Exportar
               </button>
