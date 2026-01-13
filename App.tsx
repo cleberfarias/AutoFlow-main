@@ -92,12 +92,9 @@ const App: React.FC = () => {
   // Initialize unlocked steps when a workflow is loaded or changed
   useEffect(() => {
     if (!activeWorkflow) { setUnlockedSteps(new Set()); return; }
-    const first = activeWorkflow.steps?.[0]?.id;
-    const newSet = new Set<string>();
-    if (first) newSet.add(first);
-    // preserve already completed steps
-    activeWorkflow.steps.forEach(s => { if (s.isComplete) newSet.add(s.id); });
-    setUnlockedSteps(newSet);
+    // Desbloquear TODOS os nós por padrão para permitir edição livre
+    const allStepIds = new Set(activeWorkflow.steps.map(s => s.id));
+    setUnlockedSteps(allStepIds);
   }, [activeWorkflow]);
   
   const lastMousePos = useRef({ x: 0, y: 0 });
