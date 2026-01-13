@@ -29,3 +29,6 @@ sessions
 *.db
 *.sqlite
 .env
+
+# Windows Zone.Identifier files
+*:Zone.Identifier

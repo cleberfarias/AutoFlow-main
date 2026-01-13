@@ -2,67 +2,26 @@ import { StepType, WorkflowStep } from "../types";
 
 export async function generateWorkflowFromPrompt(prompt: string): Promise<WorkflowStep[]> {
   try {
-    // Usar API do OpenAI diretamente do frontend
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('Chave da API OpenAI não configurada. Adicione VITE_OPENAI_API_KEY no arquivo .env');
-    }
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Chamar backend para gerar workflow (sem expor chave no frontend)
+    const response = await fetch('/api/generate', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `Você é um especialista em automação de fluxos de trabalho. Gere um workflow estruturado baseado na descrição do usuário.
-
-TIPOS DE STEPS VÁLIDOS:
-- TRIGGER: Gatilho inicial (webhook, evento, tempo)
-- ACTION: Ação/operação (enviar email, criar registro, chamar API)
-- DATA: Transformação de dados
-- LOGIC: Condições e lógica (if/else, loops)
-- ERROR_HANDLER: Tratamento de erros
-
-Responda APENAS com JSON no formato:
-{
-  "steps": [
-    {
-      "id": "1",
-      "type": "TRIGGER|ACTION|DATA|LOGIC|ERROR_HANDLER",
-      "title": "Nome do passo",
-      "description": "Descrição detalhada",
-      "params": {
-        "inputs": [],
-        "outputs": []
-      },
-      "nextSteps": ["2"]
-    }
-  ]
-}
-
-Gere entre 3-8 steps conectados logicamente.`
-          },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7
-      })
+      body: JSON.stringify({ prompt })
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error?.error?.message || `API retornou status ${response.status}`);
+      const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+      throw new Error(error?.error || `Backend retornou status ${response.status}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
-    const steps = parsed?.steps || [];
+    const steps = data?.steps || [];
+    
+    if (!Array.isArray(steps) || steps.length === 0) {
+      throw new Error('Backend retornou resposta inválida ou vazia');
+    }
     
     const TYPE_LABELS: Record<string, string> = {
       TRIGGER: 'Gatilho',
@@ -87,7 +46,7 @@ Gere entre 3-8 steps conectados logicamente.`
     });
   } catch (error: any) {
     console.error('Erro na geração do workflow:', error);
-    throw new Error(error?.message || 'Erro ao gerar workflow. Verifique sua chave da API OpenAI.');
+    throw new Error(error?.message || 'Erro ao gerar workflow via backend');
   }
 }
 

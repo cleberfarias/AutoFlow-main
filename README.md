@@ -44,29 +44,64 @@ Cleber Delgado
 
 **Prerequisites:**  Node.js
 
+### Configuração Inicial
 
-1. Install dependencies:
-   `npm install`
-2. Set the `VITE_OPENAI_API_KEY` in [.env.local](.env.local) to your OpenAI API key
-3. Run the app:
-   `npm run dev`
+1. Instale as dependências:
+   ```bash
+   npm install
+   ```
 
-Dev options for OpenAI usage:
-- Quick test (dev-only): set `OPENAI_API_KEY` as an **environment variable** and Vite will proxy `/api/generate` to OpenAI automatically (no extra server required):
+2. Configure o ambiente:
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   
+   Edite `.env.local` e configure:
+   - `OPENAI_API_KEY`: Sua chave da OpenAI (obtenha em https://platform.openai.com/api-keys)
+   - **IMPORTANTE**: A chave NUNCA é exposta no frontend - apenas o servidor a utiliza
 
-  ```bash
-  OPENAI_API_KEY=sk-... npm run dev
-  ```
+### Executando a Aplicação
 
-- Production / safer approach: run the server process which exposes `/api/generate` and uses `OPENAI_API_KEY` from the server env (recommended for not exposing keys to the browser):
+#### Opção 1: Desenvolvimento completo (recomendado)
+Execute frontend + backend juntos:
+```bash
+npm run dev:full
+```
+- Frontend: http://localhost:3000
+- Backend: http://localhost:5050
 
-  ```bash
-  OPENAI_API_KEY=sk-... npm run server
-  # then open http://localhost:3002 and the frontend will call /api/generate
-  ```
+#### Opção 2: Separado
+Terminal 1 (backend):
+```bash
+npm run server
+```
 
-4. (Opcional) Execute os testes:
-   `npm test`
+Terminal 2 (frontend):
+```bash
+npm run dev
+```
+
+### Modo de Desenvolvimento SEM Chave (Mock)
+
+Para testar a UI sem gastar tokens da OpenAI:
+
+1. NÃO configure `OPENAI_API_KEY` no `.env.local` (ou deixe vazio)
+2. Execute: `npm run dev:full`
+3. O backend retornará respostas mock automaticamente
+4. Ideal para testar fluxo da aplicação sem custo
+
+### Testes
+
+Execute os testes:
+```bash
+npm test
+```
+
+### Arquitetura de Segurança
+
+✅ **Seguro**: Chave da OpenAI apenas no servidor  
+❌ **Removido**: Acesso direto à OpenAI do frontend  
+🔒 **Proxy**: Frontend chama `/api/generate` → Backend valida → OpenAI
 
 ## Connectors (POC)
 

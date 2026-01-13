@@ -733,7 +733,7 @@ if (!process.env.SKIP_WHATSAPP) {
   console.log('SKIP_WHATSAPP set; not initializing WhatsApp client (use only API endpoints).');
 }
 
-const PORT = process.env.WHATSAPP_PORT || 3333;
+const PORT = process.env.PORT || process.env.WHATSAPP_PORT || 5050;
 if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => console.log(`WhatsApp connector running at http://localhost:${PORT}`));
 }
