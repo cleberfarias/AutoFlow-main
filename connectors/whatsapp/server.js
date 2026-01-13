@@ -290,6 +290,58 @@ Responda SOMENTE com JSON no formato { "steps": [...] }.`
   }
 });
 
+// LLM endpoint for chat/responses (with mock mode when no API key)
+app.post('/api/autoflow/llm', async (req, res) => {
+  try {
+    const { prompt, opts } = req.body || {};
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'prompt required' });
+    }
+
+    const model = opts?.model || 'gpt-4o-mini';
+    const maxTokens = opts?.maxTokens || 500;
+    const systemPrompt = opts?.systemPrompt || 'Você é um assistente útil e conciso.';
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    // Modo MOCK: sem chave API (desenvolvimento/teste local)
+    if (!apiKey) {
+      console.log('[LLM Mock Mode] No OPENAI_API_KEY - returning mock response');
+      const mockResponse = `[MOCK] Resposta simulada para: "${prompt.slice(0, 50)}..."`;
+      return res.json({ 
+        response: mockResponse,
+        meta: { mock: true, model: 'mock', tokens: 0 }
+      });
+    }
+
+    // Modo PRODUÇÃO: com chave API
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.chat.completions.create({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt }
+      ]
+    });
+
+    const content = response.choices?.[0]?.message?.content || '';
+    res.json({ 
+      response: content,
+      meta: { 
+        mock: false, 
+        model, 
+        tokens: response.usage?.total_tokens || 0 
+      }
+    });
+  } catch (err) {
+    console.error('Error in /api/autoflow/llm:', err);
+    res.status(500).json({ 
+      error: 'llm_failed', 
+      message: err.message || String(err) 
+    });
+  }
+});
+
 // Simulate given steps and optional userMessage using OpenAI on server
 app.post('/api/simulate', async (req, res) => {
   try {
