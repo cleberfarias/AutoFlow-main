@@ -12,6 +12,8 @@
     "whatsapp:start": "node connectors/whatsapp/server.js",
     "server": "PORT=5050 node connectors/whatsapp/server.js",
     "dev:full": "npm-run-all --parallel dev server",
+    "mcp:server": "node server/mcp/server.js",
+    "mcp:test": "node server/mcp/test-client.js",
     "prisma:push": "npx prisma db push",
     "migrate:prisma": "node scripts/migrate-lowdb-to-sqlite.js",
     "migrate:prisma:postgres": "node scripts/migrate-lowdb-to-postgres.js",

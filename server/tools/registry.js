@@ -1,14 +1,7 @@
 // Tool Registry: registro e execução de tools (MCP-style)
 import fetch from 'node-fetch';
 
-export type Tool = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, any>;
-  handler: (args: any, ctx: any) => Promise<any>;
-};
-
-const tools: Map<string, Tool> = new Map();
+const tools = new Map();
 
 // Timeout padrão para chamadas de tools (5 segundos)
 const TOOL_TIMEOUT_MS = 5000;
@@ -16,7 +9,7 @@ const TOOL_TIMEOUT_MS = 5000;
 /**
  * Registra uma tool no registry
  */
-export function registerTool(tool: Tool): void {
+export function registerTool(tool) {
   tools.set(tool.name, tool);
   console.log(`[Tool Registry] Registered: ${tool.name}`);
 }
@@ -24,23 +17,19 @@ export function registerTool(tool: Tool): void {
 /**
  * Lista todas as tools disponíveis
  */
-export function listTools(): Tool[] {
+export function listTools() {
   return Array.from(tools.values()).map(t => ({
     name: t.name,
     description: t.description,
     inputSchema: t.inputSchema,
-    handler: undefined as any // não expor handler na listagem
+    handler: undefined
   }));
 }
 
 /**
  * Executa uma tool com timeout e tratamento de erro
  */
-export async function callTool(
-  toolName: string, 
-  args: any, 
-  context: any
-): Promise<{ success: boolean; result?: any; error?: string }> {
+export async function callTool(toolName, args, context) {
   const tool = tools.get(toolName);
   
   if (!tool) {
@@ -51,7 +40,6 @@ export async function callTool(
   }
 
   try {
-    // Timeout wrapper
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Tool execution timeout')), TOOL_TIMEOUT_MS)
     );
@@ -60,7 +48,7 @@ export async function callTool(
     const result = await Promise.race([resultPromise, timeoutPromise]);
     
     return { success: true, result };
-  } catch (error: any) {
+  } catch (error) {
     console.error(`[Tool Registry] Error calling ${toolName}:`, error);
     return { 
       success: false, 
@@ -68,10 +56,6 @@ export async function callTool(
     };
   }
 }
-
-// ============================================
-// Tools Pré-registradas (Calendar POC)
-// ============================================
 
 registerTool({
   name: 'calendar.findAvailability',
@@ -86,7 +70,7 @@ registerTool({
     },
     required: []
   },
-  handler: async (args: any) => {
+  handler: async (args) => {
     const response = await fetch('http://localhost:5050/api/poc/find-availability', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -115,7 +99,7 @@ registerTool({
     },
     required: ['clientId', 'serviceId', 'start', 'end']
   },
-  handler: async (args: any) => {
+  handler: async (args) => {
     const response = await fetch('http://localhost:5050/api/poc/create-appointment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

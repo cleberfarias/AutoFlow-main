@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "autoflow": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/AutoFlow-main/server/mcp/server.js"
+      ],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
