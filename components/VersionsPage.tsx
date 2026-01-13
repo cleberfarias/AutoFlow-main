@@ -7,13 +7,26 @@ import {
 import { versionControl, WorkflowVersion } from '../services/versionControl';
 
 export default function VersionsPage() {
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('all');
-  const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
-  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<WorkflowVersion | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersion[]>([]);
 
-  const versions: Version[] = [
+  // Carregar versões e subscrever para atualizações
+  useEffect(() => {
+    setVersions(versionControl.getVersions());
+    
+    const unsubscribe = versionControl.subscribe((updatedVersions) => {
+      setVersions(updatedVersions);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const mockVersions: WorkflowVersion[] = [
     {
       id: '1',
+      workflowId: '101',
       workflowName: 'Atendimento Cliente VIP',
       version: 'v2.3.1',
       tag: 'production',
@@ -23,10 +36,11 @@ export default function VersionsPage() {
       changes: { added: 2, modified: 3, removed: 0 },
       status: 'active',
       isCurrent: true,
-      stepsCount: 12
+      steps: []
     },
     {
       id: '2',
+      workflowId: '101',
       workflowName: 'Atendimento Cliente VIP',
       version: 'v2.3.0',
       tag: 'staging',
@@ -36,10 +50,11 @@ export default function VersionsPage() {
       changes: { added: 5, modified: 2, removed: 1 },
       status: 'archived',
       isCurrent: false,
-      stepsCount: 11
+      steps: []
     },
     {
       id: '3',
+      workflowId: '102',
       workflowName: 'Funil de Vendas',
       version: 'v1.5.2',
       tag: 'production',
@@ -49,10 +64,11 @@ export default function VersionsPage() {
       changes: { added: 0, modified: 4, removed: 0 },
       status: 'active',
       isCurrent: true,
-      stepsCount: 15
+      steps: []
     },
     {
       id: '4',
+      workflowId: '102',
       workflowName: 'Funil de Vendas',
       version: 'v1.5.1',
       description: 'Ajuste fino nos critérios de qualificação de leads',
@@ -61,10 +77,11 @@ export default function VersionsPage() {
       changes: { added: 1, modified: 2, removed: 0 },
       status: 'archived',
       isCurrent: false,
-      stepsCount: 15
+      steps: []
     },
     {
       id: '5',
+      workflowId: '103',
       workflowName: 'Suporte Técnico N1',
       version: 'v3.0.0',
       tag: 'production',
@@ -74,10 +91,11 @@ export default function VersionsPage() {
       changes: { added: 8, modified: 5, removed: 3 },
       status: 'active',
       isCurrent: true,
-      stepsCount: 18
+      steps: []
     },
     {
       id: '6',
+      workflowId: '103',
       workflowName: 'Suporte Técnico N1',
       version: 'v2.8.5',
       description: 'Última versão estável antes da refatoração v3.0',
@@ -86,10 +104,11 @@ export default function VersionsPage() {
       changes: { added: 0, modified: 1, removed: 0 },
       status: 'archived',
       isCurrent: false,
-      stepsCount: 13
+      steps: []
     },
     {
       id: '7',
+      workflowId: '104',
       workflowName: 'Carrinho Abandonado',
       version: 'v1.2.0-beta',
       tag: 'beta',
@@ -99,24 +118,76 @@ export default function VersionsPage() {
       changes: { added: 3, modified: 1, removed: 0 },
       status: 'draft',
       isCurrent: false,
-      stepsCount: 7
+      steps: []
     }
   ];
 
-  const workflows = ['all', ...Array.from(new Set(versions.map(v => v.workflowName)))];
+  // Usar versões reais se houver, senão usar mockVersions para demonstração
+  const displayVersions = versions.length > 0 ? versions : mockVersions;
+
+  const workflows = ['all', ...Array.from(new Set(displayVersions.map(v => v.workflowName)))];
 
   const filteredVersions = selectedWorkflow === 'all' 
-    ? versions 
-    : versions.filter(v => v.workflowName === selectedWorkflow);
+    ? displayVersions 
+    : displayVersions.filter(v => v.workflowName === selectedWorkflow);
 
   const stats = {
-    totalVersions: versions.length,
-    activeVersions: versions.filter(v => v.status === 'active').length,
-    totalWorkflows: workflows.length - 1, // -1 para remover 'all'
-    recentChanges: versions.filter(v => {
+    totalVersions: displayVersions.length,
+    activeVersions: displayVersions.filter(v => v.status === 'active').length,
+    totalWorkflows: workflows.length - 1,
+    recentChanges: displayVersions.filter(v => {
       const diff = Date.now() - new Date(v.timestamp).getTime();
-      return diff < 24 * 60 * 60 * 1000; // últimas 24h
+      return diff < 24 * 60 * 60 * 1000;
     }).length
+  };
+
+  const handleRestore = (version: WorkflowVersion) => {
+    if (confirm(`Restaurar versão ${version.version} de "${version.workflowName}"?`)) {
+      const restored = versionControl.restoreVersion(version.id, 'Usuário');
+      if (restored) {
+        alert(`Versão ${version.version} restaurada com sucesso! Recarregue a página de workflows.`);
+      } else {
+        alert('Erro ao restaurar versão.');
+      }
+    }
+  };
+
+  const handleDelete = (version: WorkflowVersion) => {
+    if (version.isCurrent) {
+      alert('Não é possível deletar a versão atual.');
+      return;
+    }
+    if (confirm(`Deletar versão ${version.version}?`)) {
+      const deleted = versionControl.deleteVersion(version.id, 'Usuário');
+      if (deleted) {
+        alert('Versão deletada com sucesso!');
+      }
+    }
+  };
+
+  const handleExport = () => {
+    const data = versionControl.exportVersions();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `autoflow-versions-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    
+    if (hours < 1) return 'Há alguns minutos';
+    if (hours < 24) return `Há ${hours} hora${hours > 1 ? 's' : ''}`;
+    if (hours < 48) return 'Ontem';
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
   const getStatusColor = (status: string) => {
@@ -139,17 +210,7 @@ export default function VersionsPage() {
     return colors[tag as keyof typeof colors] || 'bg-slate-500/20 text-slate-400';
   };
 
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 1) return 'Há alguns minutos';
-    if (hours < 24) return `Há ${hours} hora${hours > 1 ? 's' : ''}`;
-    if (hours < 48) return 'Ontem';
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  };
+
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen">
@@ -318,36 +379,41 @@ export default function VersionsPage() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Clock size={16} />
-                                <span>{formatDate(version.timestamp)}</span>
+                                <span>{formatTimestamp(version.timestamp)}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <GitCommit size={16} />
-                                <span>{version.stepsCount} passos</span>
+                                <span>{version.steps.length} passos</span>
                               </div>
                             </div>
                           </div>
 
                           <div className="flex flex-col gap-2 ml-4">
                             <button
+                              onClick={() => setSelectedVersion(version)}
                               className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
                               title="Visualizar"
                             >
                               <Eye size={18} />
                             </button>
                             {!version.isCurrent && (
-                              <button
-                                className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                                title="Restaurar versão"
-                              >
-                                <RotateCcw size={18} />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleRestore(version)}
+                                  className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                                  title="Restaurar versão"
+                                >
+                                  <RotateCcw size={18} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(version)}
+                                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                                  title="Deletar versão"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </>
                             )}
-                            <button
-                              className="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
-                              title="Download"
-                            >
-                              <Download size={18} />
-                            </button>
                           </div>
                         </div>
 
