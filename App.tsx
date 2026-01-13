@@ -171,14 +171,12 @@ const App: React.FC = () => {
       return;
     }
 
-    // Apenas ativar panning se for clique do meio OU se espaço estiver pressionado
-    if (isSpacePressed || isMiddleClick) {
-      e.preventDefault();
-      setIsPanning(true);
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
-      // Try to capture the pointer to avoid lost events when moving fast
-      try { (e.target as HTMLElement).setPointerCapture?.((e as any).pointerId); } catch {}
-    }
+    // Ativar panning: clique no canvas vazio, clique do meio ou espaço pressionado
+    e.preventDefault();
+    setIsPanning(true);
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+    // Try to capture the pointer to avoid lost events when moving fast
+    try { (e.target as HTMLElement).setPointerCapture?.((e as any).pointerId); } catch {}
   };
 
   useEffect(() => {
