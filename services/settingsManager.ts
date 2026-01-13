@@ -365,7 +365,14 @@ class SettingsManager {
 // Singleton instance
 export const settingsManager = new SettingsManager();
 
-// Inicializar automaticamente
+// Inicializar automaticamente quando o DOM estiver pronto
 if (typeof window !== 'undefined') {
-  settingsManager.initialize();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      settingsManager.initialize();
+    });
+  } else {
+    // DOM já está pronto
+    settingsManager.initialize();
+  }
 }

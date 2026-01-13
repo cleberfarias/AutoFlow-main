@@ -4,6 +4,7 @@ import {
   GitBranch, FileText, Settings, ChevronDown, LogOut 
 } from 'lucide-react';
 import { t } from '../services/i18n';
+import { settingsManager } from '../services/settingsManager';
 
 interface NavbarProps {
   currentPage: string;
@@ -14,6 +15,15 @@ interface NavbarProps {
 export default function Navbar({ currentPage, onPageChange, onLogout }: NavbarProps) {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [showUserMenu, setShowUserMenu] = React.useState(false);
+  const [, setLanguage] = React.useState(settingsManager.getSettings().language);
+
+  // Re-renderizar quando o idioma mudar
+  React.useEffect(() => {
+    const unsubscribe = settingsManager.subscribe((settings) => {
+      setLanguage(settings.language);
+    });
+    return unsubscribe;
+  }, []);
 
   console.log('Navbar renderizado! Página atual:', currentPage);
 

@@ -112,12 +112,17 @@ const App: React.FC = () => {
 
   // Inicializar configurações e idioma
   useEffect(() => {
+    // Aplicar configurações iniciais
+    const currentSettings = settingsManager.getSettings();
+    i18n.setLanguage(currentSettings.language);
+    
+    // Garantir que tema e cores sejam aplicados
+    settingsManager.initialize();
+    
+    // Subscrever a mudanças
     const unsubscribe = settingsManager.subscribe((settings) => {
       i18n.setLanguage(settings.language);
     });
-
-    // Aplicar idioma inicial
-    i18n.setLanguage(settingsManager.getSettings().language);
 
     return unsubscribe;
   }, []);

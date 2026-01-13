@@ -325,6 +325,231 @@ export const translations: Translations = {
     'pt-BR': 'Confirmar',
     'en-US': 'Confirm',
     'es-ES': 'Confirmar'
+  },
+  'common.logout': {
+    'pt-BR': 'Sair',
+    'en-US': 'Logout',
+    'es-ES': 'Cerrar Sesión'
+  },
+  'common.close': {
+    'pt-BR': 'Fechar',
+    'en-US': 'Close',
+    'es-ES': 'Cerrar'
+  },
+  'common.back': {
+    'pt-BR': 'Voltar',
+    'en-US': 'Back',
+    'es-ES': 'Volver'
+  },
+  'common.next': {
+    'pt-BR': 'Próximo',
+    'en-US': 'Next',
+    'es-ES': 'Siguiente'
+  },
+  'common.previous': {
+    'pt-BR': 'Anterior',
+    'en-US': 'Previous',
+    'es-ES': 'Anterior'
+  },
+  'common.add': {
+    'pt-BR': 'Adicionar',
+    'en-US': 'Add',
+    'es-ES': 'Añadir'
+  },
+  'common.remove': {
+    'pt-BR': 'Remover',
+    'en-US': 'Remove',
+    'es-ES': 'Eliminar'
+  },
+  'common.duplicate': {
+    'pt-BR': 'Duplicar',
+    'en-US': 'Duplicate',
+    'es-ES': 'Duplicar'
+  },
+  'common.view': {
+    'pt-BR': 'Visualizar',
+    'en-US': 'View',
+    'es-ES': 'Ver'
+  },
+  'common.download': {
+    'pt-BR': 'Baixar',
+    'en-US': 'Download',
+    'es-ES': 'Descargar'
+  },
+  'common.upload': {
+    'pt-BR': 'Enviar',
+    'en-US': 'Upload',
+    'es-ES': 'Subir'
+  },
+  'common.filter': {
+    'pt-BR': 'Filtrar',
+    'en-US': 'Filter',
+    'es-ES': 'Filtrar'
+  },
+  'common.sort': {
+    'pt-BR': 'Ordenar',
+    'en-US': 'Sort',
+    'es-ES': 'Ordenar'
+  },
+  'common.refresh': {
+    'pt-BR': 'Atualizar',
+    'en-US': 'Refresh',
+    'es-ES': 'Actualizar'
+  },
+  'common.settings': {
+    'pt-BR': 'Configurações',
+    'en-US': 'Settings',
+    'es-ES': 'Configuración'
+  },
+  'common.help': {
+    'pt-BR': 'Ajuda',
+    'en-US': 'Help',
+    'es-ES': 'Ayuda'
+  },
+  'common.info': {
+    'pt-BR': 'Informação',
+    'en-US': 'Information',
+    'es-ES': 'Información'
+  },
+  'common.warning': {
+    'pt-BR': 'Aviso',
+    'en-US': 'Warning',
+    'es-ES': 'Advertencia'
+  },
+  'common.yes': {
+    'pt-BR': 'Sim',
+    'en-US': 'Yes',
+    'es-ES': 'Sí'
+  },
+  'common.no': {
+    'pt-BR': 'Não',
+    'en-US': 'No',
+    'es-ES': 'No'
+  },
+  
+  // Dashboard
+  'dashboard.title': {
+    'pt-BR': 'Dashboard',
+    'en-US': 'Dashboard',
+    'es-ES': 'Panel de Control'
+  },
+  'dashboard.welcome': {
+    'pt-BR': 'Bem-vindo ao AutoFlow',
+    'en-US': 'Welcome to AutoFlow',
+    'es-ES': 'Bienvenido a AutoFlow'
+  },
+  'dashboard.totalWorkflows': {
+    'pt-BR': 'Total de Workflows',
+    'en-US': 'Total Workflows',
+    'es-ES': 'Flujos Totales'
+  },
+  'dashboard.activeClients': {
+    'pt-BR': 'Clientes Ativos',
+    'en-US': 'Active Clients',
+    'es-ES': 'Clientes Activos'
+  },
+  'dashboard.recentActivity': {
+    'pt-BR': 'Atividade Recente',
+    'en-US': 'Recent Activity',
+    'es-ES': 'Actividad Reciente'
+  },
+  
+  // Workflows
+  'workflows.title': {
+    'pt-BR': 'Workflows',
+    'en-US': 'Workflows',
+    'es-ES': 'Flujos de Trabajo'
+  },
+  'workflows.create': {
+    'pt-BR': 'Criar Workflow',
+    'en-US': 'Create Workflow',
+    'es-ES': 'Crear Flujo'
+  },
+  'workflows.edit': {
+    'pt-BR': 'Editar Workflow',
+    'en-US': 'Edit Workflow',
+    'es-ES': 'Editar Flujo'
+  },
+  'workflows.delete': {
+    'pt-BR': 'Deletar Workflow',
+    'en-US': 'Delete Workflow',
+    'es-ES': 'Eliminar Flujo'
+  },
+  'workflows.empty': {
+    'pt-BR': 'Nenhum workflow encontrado',
+    'en-US': 'No workflows found',
+    'es-ES': 'No se encontraron flujos'
+  },
+  
+  // Templates
+  'templates.title': {
+    'pt-BR': 'Templates',
+    'en-US': 'Templates',
+    'es-ES': 'Plantillas'
+  },
+  'templates.create': {
+    'pt-BR': 'Criar Template',
+    'en-US': 'Create Template',
+    'es-ES': 'Crear Plantilla'
+  },
+  'templates.apply': {
+    'pt-BR': 'Aplicar Template',
+    'en-US': 'Apply Template',
+    'es-ES': 'Aplicar Plantilla'
+  },
+  'templates.usageCount': {
+    'pt-BR': 'Uso: {count} vezes',
+    'en-US': 'Used {count} times',
+    'es-ES': 'Usado {count} veces'
+  },
+  
+  // Versions
+  'versions.title': {
+    'pt-BR': 'Versões',
+    'en-US': 'Versions',
+    'es-ES': 'Versiones'
+  },
+  'versions.restore': {
+    'pt-BR': 'Restaurar Versão',
+    'en-US': 'Restore Version',
+    'es-ES': 'Restaurar Versión'
+  },
+  'versions.current': {
+    'pt-BR': 'Versão Atual',
+    'en-US': 'Current Version',
+    'es-ES': 'Versión Actual'
+  },
+  
+  // Logs
+  'logs.title': {
+    'pt-BR': 'Logs',
+    'en-US': 'Logs',
+    'es-ES': 'Registros'
+  },
+  'logs.clear': {
+    'pt-BR': 'Limpar Logs',
+    'en-US': 'Clear Logs',
+    'es-ES': 'Limpiar Registros'
+  },
+  'logs.level.info': {
+    'pt-BR': 'Info',
+    'en-US': 'Info',
+    'es-ES': 'Info'
+  },
+  'logs.level.warn': {
+    'pt-BR': 'Aviso',
+    'en-US': 'Warning',
+    'es-ES': 'Advertencia'
+  },
+  'logs.level.error': {
+    'pt-BR': 'Erro',
+    'en-US': 'Error',
+    'es-ES': 'Error'
+  },
+  'logs.level.success': {
+    'pt-BR': 'Sucesso',
+    'en-US': 'Success',
+    'es-ES': 'Éxito'
   }
 };
 
