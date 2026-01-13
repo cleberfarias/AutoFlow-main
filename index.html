@@ -1,10 +1,38 @@
 
 <!DOCTYPE html>
-<html lang="pt-br" class="dark">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoFlow AI - Enterprise Edition</title>
+    
+    <!-- Aplicar tema ANTES de carregar qualquer coisa -->
+    <script>
+        (function() {
+            try {
+                const settings = JSON.parse(localStorage.getItem('autoflow_settings') || '{}');
+                const theme = settings.theme || 'dark';
+                const colorScheme = settings.colorScheme || 'violet';
+                const html = document.documentElement;
+                
+                // Aplicar tema
+                if (theme === 'auto') {
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    if (prefersDark) html.classList.add('dark');
+                } else if (theme === 'dark') {
+                    html.classList.add('dark');
+                }
+                
+                // Aplicar cor
+                html.classList.add('color-' + colorScheme);
+            } catch(e) {
+                // Default dark theme
+                document.documentElement.classList.add('dark');
+                document.documentElement.classList.add('color-violet');
+            }
+        })();
+    </script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {

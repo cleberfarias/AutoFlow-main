@@ -32,12 +32,18 @@ export default function SettingsPage() {
   };
 
   const handleThemeChange = (theme: Theme) => {
+    console.log('🌓 Mudando tema para:', theme);
     settingsManager.setTheme(theme);
+    // Forçar re-render
+    setSettings({ ...settingsManager.getSettings() });
     showSavedMessage();
   };
 
   const handleColorSchemeChange = (colorScheme: ColorScheme) => {
+    console.log('🎨 Mudando cor para:', colorScheme);
     settingsManager.setColorScheme(colorScheme);
+    // Forçar re-render
+    setSettings({ ...settingsManager.getSettings() });
     showSavedMessage();
   };
 

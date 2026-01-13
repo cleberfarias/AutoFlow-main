@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Tema - AutoFlow</title>
+    
+    <!-- Script para aplicar tema -->
+    <script>
+        (function() {
+            const settings = JSON.parse(localStorage.getItem('autoflow_settings') || '{"theme":"dark","colorScheme":"violet"}');
+            const html = document.documentElement;
+            
+            if (settings.theme === 'dark') {
+                html.classList.add('dark');
+            }
+            html.classList.add('color-' + settings.colorScheme);
+        })();
+    </script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    
+    <style>
+        .color-violet { --primary: #8b5cf6; }
+        .color-blue { --primary: #3b82f6; }
+        .color-emerald { --primary: #10b981; }
+    </style>
+</head>
+<body class="bg-white dark:bg-slate-900 min-h-screen">
+    <div class="p-8">
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4">
+            Teste de Tema Dark/Light
+        </h1>
+        
+        <div class="bg-slate-100 dark:bg-slate-800 p-6 rounded-lg mb-4">
+            <p class="text-slate-700 dark:text-slate-300">
+                Este texto deve mudar de cor entre temas
+            </p>
+        </div>
+        
+        <button 
+            onclick="toggleTheme()" 
+            class="px-6 py-3 rounded-lg text-white font-semibold"
+            style="background: var(--primary)">
+            Alternar Tema
+        </button>
+        
+        <div class="mt-4 space-x-2">
+            <button onclick="setColor('violet')" class="px-4 py-2 bg-violet-500 text-white rounded">Violet</button>
+            <button onclick="setColor('blue')" class="px-4 py-2 bg-blue-500 text-white rounded">Blue</button>
+            <button onclick="setColor('emerald')" class="px-4 py-2 bg-emerald-500 text-white rounded">Emerald</button>
+        </div>
+        
+        <div class="mt-4 p-4 bg-slate-200 dark:bg-slate-700 rounded">
+            <p class="text-sm text-slate-600 dark:text-slate-400">Classes atuais:</p>
+            <code id="classes" class="text-xs text-slate-900 dark:text-white"></code>
+        </div>
+    </div>
+    
+    <script>
+        function updateClasses() {
+            document.getElementById('classes').textContent = document.documentElement.className;
+        }
+        
+        function toggleTheme() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+            const settings = JSON.parse(localStorage.getItem('autoflow_settings') || '{}');
+            settings.theme = html.classList.contains('dark') ? 'dark' : 'light';
+            localStorage.setItem('autoflow_settings', JSON.stringify(settings));
+            updateClasses();
+        }
+        
+        function setColor(color) {
+            const html = document.documentElement;
+            html.classList.remove('color-violet', 'color-blue', 'color-emerald');
+            html.classList.add('color-' + color);
+            const settings = JSON.parse(localStorage.getItem('autoflow_settings') || '{}');
+            settings.colorScheme = color;
+            localStorage.setItem('autoflow_settings', JSON.stringify(settings));
+            updateClasses();
+        }
+        
+        updateClasses();
+    </script>
+</body>
+</html>

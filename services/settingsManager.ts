@@ -228,9 +228,16 @@ class SettingsManager {
       root.classList.toggle('dark', prefersDark);
       root.classList.toggle('light', !prefersDark);
     } else {
-      root.classList.toggle('dark', this.settings.theme === 'dark');
-      root.classList.toggle('light', this.settings.theme === 'light');
+      // Remove ambas as classes primeiro
+      root.classList.remove('dark', 'light');
+      // Adiciona a classe apropriada
+      if (this.settings.theme === 'dark') {
+        root.classList.add('dark');
+      } else if (this.settings.theme === 'light') {
+        root.classList.add('light');
+      }
     }
+    console.log('✅ Tema aplicado:', this.settings.theme, 'Classes:', root.className);
   }
 
   // Aplicar esquema de cores
@@ -243,6 +250,7 @@ class SettingsManager {
     
     // Adiciona o esquema atual
     root.classList.add(`color-${this.settings.colorScheme}`);
+    console.log('🎨 Cor aplicada:', this.settings.colorScheme, 'Classes:', root.className);
   }
 
   // Export/Import
