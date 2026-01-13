@@ -26,6 +26,7 @@ import LogsPage from './components/LogsPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 import { logger } from './services/logger';
 import { versionControl } from './services/versionControl';
+import { templateManager } from './services/templateManager';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
@@ -487,6 +488,30 @@ const App: React.FC = () => {
     }
 
     setNamingModal(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const saveAsTemplate = (workflowName: string, description: string, category: any, steps: WorkflowStep[]) => {
+    if (!activeClient) return;
+    
+    templateManager.createTemplate(
+      workflowName,
+      description,
+      category,
+      steps,
+      activeClient.name,
+      {
+        tags: ['customizado'],
+        isPublic: false,
+        isFeatured: false
+      }
+    );
+    
+    logger.success('Template criado', {
+      workflow: workflowName,
+      user: activeClient.name,
+      action: 'template.create',
+      details: `Template "${workflowName}" criado com ${steps.length} passos`
+    });
   };
 
   const saveCurrentWorkflow = (updatedSteps: WorkflowStep[]) => {

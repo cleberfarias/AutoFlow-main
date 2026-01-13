@@ -1,123 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Layout, Zap, MessageSquare, ShoppingCart, HeadphonesIcon, 
   TrendingUp, Plus, Search, Filter, Star, Download, Eye, 
   Copy, Edit2, Trash2, Clock, Users, CheckCircle 
 } from 'lucide-react';
-
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  category: 'atendimento' | 'vendas' | 'suporte' | 'marketing' | 'operacional';
-  icon: any;
-  stepsCount: number;
-  usageCount: number;
-  rating: number;
-  createdAt: string;
-  author: string;
-  tags: string[];
-  isPublic: boolean;
-  isFeatured: boolean;
-}
+import { templateManager, WorkflowTemplate } from '../services/templateManager';
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
 
-  const templates: Template[] = [
-    {
-      id: '1',
-      name: 'Atendimento Inicial',
-      description: 'Template completo para primeiro contato com clientes, incluindo saudação, qualificação e direcionamento.',
-      category: 'atendimento',
-      icon: MessageSquare,
-      stepsCount: 8,
-      usageCount: 245,
-      rating: 4.8,
-      createdAt: '2026-01-10',
-      author: 'Sistema',
-      tags: ['whatsapp', 'saudação', 'qualificação'],
-      isPublic: true,
-      isFeatured: true
-    },
-    {
-      id: '2',
-      name: 'Funil de Vendas',
-      description: 'Workflow otimizado para conversão de leads, com follow-up automático e scoring de interesse.',
-      category: 'vendas',
-      icon: TrendingUp,
-      stepsCount: 12,
-      usageCount: 189,
-      rating: 4.9,
-      createdAt: '2026-01-08',
-      author: 'Sistema',
-      tags: ['leads', 'conversão', 'follow-up', 'crm'],
-      isPublic: true,
-      isFeatured: true
-    },
-    {
-      id: '3',
-      name: 'Suporte Técnico',
-      description: 'Triagem e roteamento inteligente de tickets de suporte com base em prioridade e categoria.',
-      category: 'suporte',
-      icon: HeadphonesIcon,
-      stepsCount: 10,
-      usageCount: 156,
-      rating: 4.7,
-      createdAt: '2026-01-05',
-      author: 'Sistema',
-      tags: ['tickets', 'prioridade', 'roteamento', 'sla'],
-      isPublic: true,
-      isFeatured: false
-    },
-    {
-      id: '4',
-      name: 'Carrinho Abandonado',
-      description: 'Recuperação automática de carrinhos abandonados com lembretes personalizados e cupons de desconto.',
-      category: 'vendas',
-      icon: ShoppingCart,
-      stepsCount: 6,
-      usageCount: 134,
-      rating: 4.6,
-      createdAt: '2026-01-03',
-      author: 'Sistema',
-      tags: ['e-commerce', 'recuperação', 'cupons'],
-      isPublic: true,
-      isFeatured: false
-    },
-    {
-      id: '5',
-      name: 'Pesquisa de Satisfação',
-      description: 'Coleta automática de feedback pós-atendimento com NPS e análise de sentimento.',
-      category: 'atendimento',
-      icon: Star,
-      stepsCount: 5,
-      usageCount: 98,
-      rating: 4.5,
-      createdAt: '2025-12-28',
-      author: 'Sistema',
-      tags: ['nps', 'feedback', 'satisfação'],
-      isPublic: true,
-      isFeatured: false
-    },
-    {
-      id: '6',
-      name: 'Campanhas Marketing',
-      description: 'Automação completa de campanhas multicanal com segmentação e tracking de conversão.',
-      category: 'marketing',
-      icon: Zap,
-      stepsCount: 15,
-      usageCount: 87,
-      rating: 4.8,
-      createdAt: '2025-12-25',
-      author: 'Sistema',
-      tags: ['campanhas', 'multicanal', 'segmentação'],
-      isPublic: true,
-      isFeatured: true
+  // Carregar templates e subscrever para atualizações
+  useEffect(() => {
+    setTemplates(templateManager.getTemplates());
+    
+    const unsubscribe = templateManager.subscribe((updatedTemplates) => {
+      setTemplates(updatedTemplates);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleApplyTemplate = (templateId: string) => {
+    const steps = templateManager.applyTemplate(templateId, 'Usuário');
+    if (steps) {
+      alert('Template aplicado! Os passos foram copiados para uso.');
     }
-  ];
+  };
+
+  const handleDeleteTemplate = (templateId: string) => {
+    if (confirm('Deletar este template?')) {
+      const deleted = templateManager.deleteTemplate(templateId, 'Usuário');
+      if (deleted) {
+        alert('Template deletado com sucesso!');
+      } else {
+        alert('Não foi possível deletar este template do sistema.');
+      }
+    }
+  };
+
+  const handleDuplicateTemplate = (templateId: string) => {
+    const duplicated = templateManager.duplicateTemplate(templateId, 'Usuário');
+    if (duplicated) {
+      alert(`Template duplicado como "${duplicated.name}"!`);
+    }
+  };
+
+  const handleExportTemplates = () => {
+    const data = templateManager.exportTemplates();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `autoflow-templates-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const categories = [
     { id: 'all', label: 'Todos', count: templates.length },
@@ -128,12 +70,9 @@ export default function TemplatesPage() {
     { id: 'operacional', label: 'Operacional', count: templates.filter(t => t.category === 'operacional').length }
   ];
 
-  const filteredTemplates = templates.filter(template => {
-    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         template.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         template.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+  const filteredTemplates = templateManager.getTemplates({
+    category: selectedCategory,
+    searchQuery: searchQuery
   });
 
   const getCategoryColor = (category: string) => {
@@ -147,12 +86,18 @@ export default function TemplatesPage() {
     return colors[category as keyof typeof colors] || colors.operacional;
   };
 
-  const stats = {
-    totalTemplates: templates.length,
-    totalUsage: templates.reduce((sum, t) => sum + t.usageCount, 0),
-    avgRating: (templates.reduce((sum, t) => sum + t.rating, 0) / templates.length).toFixed(1),
-    featured: templates.filter(t => t.isFeatured).length
+  const getCategoryIcon = (category: string) => {
+    const icons = {
+      atendimento: MessageSquare,
+      vendas: TrendingUp,
+      suporte: HeadphonesIcon,
+      marketing: Zap,
+      operacional: Layout
+    };
+    return icons[category as keyof typeof icons] || Layout;
   };
+
+  const stats = templateManager.getStats();
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen">
@@ -168,13 +113,22 @@ export default function TemplatesPage() {
               <p className="text-slate-400">Workflows prontos para usar e personalizar</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-teal-500/20 transition-all"
-          >
-            <Plus size={20} />
-            Criar Template
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportTemplates}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+            >
+              <Download size={20} />
+              Exportar
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-teal-500/20 transition-all"
+            >
+              <Plus size={20} />
+              Criar Template
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -186,8 +140,8 @@ export default function TemplatesPage() {
               </div>
               <span className="text-slate-400 text-sm">Templates</span>
             </div>
-            <div className="text-3xl font-bold text-white">{stats.totalTemplates}</div>
-            <div className="text-sm text-teal-400 mt-1">{stats.featured} em destaque</div>
+            <div className="text-3xl font-bold text-white">{stats.featuredTemplates}</div>
+            <div className="text-sm text-teal-400 mt-1">em destaque</div>
           </div>
 
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
@@ -219,7 +173,7 @@ export default function TemplatesPage() {
               </div>
               <span className="text-slate-400 text-sm">Públicos</span>
             </div>
-            <div className="text-3xl font-bold text-white">{templates.filter(t => t.isPublic).length}</div>
+            <div className="text-3xl font-bold text-white">{stats.publicTemplates}</div>
             <div className="text-sm text-slate-400 mt-1">Disponíveis</div>
           </div>
         </div>
@@ -263,7 +217,7 @@ export default function TemplatesPage() {
         {/* Templates Grid */}
         <div className="grid grid-cols-3 gap-6">
           {filteredTemplates.map(template => {
-            const Icon = template.icon;
+            const Icon = getCategoryIcon(template.category);
             return (
               <div key={template.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-teal-500 transition-all group">
                 {/* Header com gradiente */}
@@ -318,11 +272,34 @@ export default function TemplatesPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Clock size={16} />
-                      <span>{new Date(template.createdAt).toLocaleDateString('pt-BR')}</span>
+                      <span>{new Date(template.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
                     </div>
                   </div>
 
                   {/* Actions */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleApplyTemplate(template.id)}
+                      className="flex items-center justify-center gap-1 px-2 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      <Download size={14} />
+                      Usar
+                    </button>
+                    <button
+                      onClick={() => handleDuplicateTemplate(template.id)}
+                      className="flex items-center justify-center gap-1 px-2 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-medium transition-colors text-sm"
+                      title="Duplicar"
+                    >
+                      <Copy size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTemplate(template.id)}
+                      className="flex items-center justify-center gap-1 px-2 py-2 bg-slate-700 hover:bg-rose-600 text-slate-300 hover:text-white rounded-lg font-medium transition-colors text-sm"
+                      title="Deletar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button className="flex items-center justify-center gap-2 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-medium transition-colors">
                       <Download size={16} />
