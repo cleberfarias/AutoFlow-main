@@ -19,6 +19,7 @@ import GenericPage from './components/GenericPage';
 import MCPHub from './components/MCPHub';
 import { MCPSelectorModal, MCPNodeCard } from './components/MCPNode';
 import AIRoutingNode from './components/AIRoutingNode';
+import AIRoutingPage from './components/AIRoutingPage';
 import { generateWorkflowFromPrompt } from './services/geminiService';
 // ChatGuru integration exports
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
