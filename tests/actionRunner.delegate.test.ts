@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import db from '../server/db.ts';
-import { addAgent } from '../server/agents.js';
-import { runAction } from '../services/actionRunner.js';
+import { addAgent } from '../server/agents';
+import { runAction } from '../services/actionRunner';
 
 describe('actionRunner DELEGAR', () => {
   beforeEach(async () => {

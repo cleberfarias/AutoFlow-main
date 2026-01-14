@@ -39,7 +39,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       }
       // metrics: action executed
       try {
-        const { increment } = await import('../server/metrics.js');
+        const { increment } = await import('../server/metrics');
         increment('actions_executed', 1);
       } catch (e) {
         try {
@@ -59,7 +59,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
         // ignore
       }
       try {
-        const { increment } = await import('../server/metrics.js');
+        const { increment } = await import('../server/metrics');
         increment('actions_executed', 1);
       } catch (e) {
         try {
@@ -74,11 +74,11 @@ export async function runAction(action: Action, context: Record<string, any> = {
       const tag = action.params?.tag || action.params?.name || null;
       if (!tag) return { ok: false, type: 'TAG', raw: 'missing_tag' };
       try {
-        const { addTag } = await import('../server/tags.js');
+        const { addTag } = await import('../server/tags');
         const tags = await addTag(context.chatId || null, tag);
         await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'TAG', text: tag, timestamp: new Date().toISOString() });
         try {
-          const { increment } = await import('../server/metrics.js');
+          const { increment } = await import('../server/metrics');
           increment('actions_executed', 1);
         } catch (e) {}
         return { ok: true, type: 'TAG', text: tag, raw: tags };
@@ -111,10 +111,10 @@ export async function runAction(action: Action, context: Record<string, any> = {
       const stepId = action.params?.stepId || action.params?.step || null;
       if (!funnelId) return { ok: false, type: 'FUNIL', raw: 'missing_funnelId' };
       try {
-        const { setChatFunnel } = await import('../server/funnels.js');
+        const { setChatFunnel } = await import('../server/funnels');
         const chat = await setChatFunnel(context.chatId || null, funnelId, stepId);
         await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'FUNIL', text: JSON.stringify({ funnelId, stepId }), timestamp: new Date().toISOString() });
-        try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
+        try { const { increment } = await import('../server/metrics'); increment('actions_executed', 1); } catch (e) {}
         return { ok: true, type: 'FUNIL', text: `${funnelId}:${stepId || ''}`, raw: chat };
       } catch (err) {
         return { ok: false, type: 'FUNIL', raw: String(err) };
@@ -125,7 +125,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       const status = action.params?.status || action.params?.value || null;
       if (!status) return { ok: false, type: 'STATUS', raw: 'missing_status' };
       try {
-        const { setChatStatus } = await import('../server/status.js');
+        const { setChatStatus } = await import('../server/status');
         const chat = await setChatStatus(context.chatId || null, status);
         await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'STATUS', text: status, timestamp: new Date().toISOString() });
         try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
@@ -138,11 +138,11 @@ export async function runAction(action: Action, context: Record<string, any> = {
     case 'DELEGAR': {
       // Delegates the chat to an available agent using round-robin
       try {
-        const { getNextAgent, assignChat } = await import('../server/agents.js');
+        const { getNextAgent, assignChat } = await import('../server/agents');
         const agent = await getNextAgent();
         if (!agent) return { ok: false, type: 'DELEGAR', raw: 'no_agent_available' };
         await assignChat(context.chatId || null, agent.id);
-        try { const { setChatStatus } = await import('../server/status.js'); await setChatStatus(context.chatId || null, `assigned:${agent.id}`); } catch (e) {}
+        try { const { setChatStatus } = await import('../server/status'); await setChatStatus(context.chatId || null, `assigned:${agent.id}`); } catch (e) {}
         const text = action.params?.message ? replaceVariables(action.params.message, context) : `Conectando você a ${agent.name}`;
         // send notification/forward to agent so they can accept/reject
         try {
@@ -153,7 +153,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
           // ignore forward failures
         }
           await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'DELEGAR', text: `${agent.id}`, timestamp: new Date().toISOString() });
-        try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
+        try { const { increment } = await import('../server/metrics'); increment('actions_executed', 1); } catch (e) {}
         return { ok: true, type: 'DELEGAR', text, raw: agent };
       } catch (err) {
         return { ok: false, type: 'DELEGAR', raw: String(err) };

@@ -301,9 +301,11 @@ export class ZendeskMCP {
    */
   async uploadFile(params: {
     filename: string;
-    content: Blob | Buffer;
+    content: Blob | BufferSource;
     contentType: string;
   }): Promise<{ upload: { token: string; attachment: any } }> {
+    const body: BodyInit = params.content as BodyInit;
+
     const response = await fetch(
       `${this.baseUrl}/uploads.json?filename=${encodeURIComponent(params.filename)}`,
       {
@@ -312,7 +314,7 @@ export class ZendeskMCP {
           'Authorization': `Basic ${this.auth}`,
           'Content-Type': params.contentType
         },
-        body: params.content
+        body
       }
     );
 

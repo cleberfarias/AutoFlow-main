@@ -6,7 +6,7 @@ try {
 }
 // Ensure WhatsApp client doesn't try to initialize during tests
 process.env.SKIP_WHATSAPP = '1';
-import app from '../connectors/whatsapp/server.js';
+import app from '../connectors/whatsapp/server';
 import { describe, it, expect, beforeEach } from 'vitest';
 import db from '../server/db';
 

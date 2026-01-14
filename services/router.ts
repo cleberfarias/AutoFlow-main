@@ -84,7 +84,7 @@ export async function routeMessage(
 
   // CAMADA 1: Heurística barata (intentService)
   try {
-    const { detectIntent } = await import('../server/intentService.js');
+    const { detectIntent } = await import('../server/intentService');
     const intentResult = await detectIntent(text);
     
     if (intentResult.score >= INTENT_CONFIDENCE_THRESHOLD) {
@@ -134,7 +134,7 @@ export async function routeMessage(
 
   // CAMADA 3: Fallback LLM full (resposta natural curta)
   try {
-    const { generateResponse } = await import('./llmResponder.js');
+    const { generateResponse } = await import('./llmResponder');
     const llmResponse = await generateResponse(text, {
       systemPrompt: 'Você é um assistente de atendimento ao cliente. Seja breve, cordial e objetivo.',
       maxTokens: 150

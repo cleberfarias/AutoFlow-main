@@ -58,9 +58,9 @@ function sendResponse(id, result) {
 /**
  * Envia erro JSON-RPC
  */
-function sendError(id, code, message, data = null) {
-  const error = { code, message };
-  if (data) error.data = data;
+function sendError(id: number | string | null, code: any, message: any, data: any = null) {
+  const error: any = { code, message };
+  if (data) (error as any).data = data;
   
   sendMessage({
     jsonrpc: '2.0',
@@ -84,15 +84,15 @@ function sendNotification(method, params) {
  * Converte tools do registry para formato MCP
  */
 function convertToolsToMCP() {
-  const registryTools = getRegistryTools();
+  const registryTools = getRegistryTools() as any[];
   
-  return registryTools.map(tool => ({
+  return registryTools.map((tool: any) => ({
     name: tool.name,
-    description: tool.description,
+    description: tool.description || null,
     inputSchema: {
       type: 'object',
-      properties: tool.inputSchema.properties || {},
-      required: tool.inputSchema.required || []
+      properties: (tool.inputSchema && tool.inputSchema.properties) || {},
+      required: (tool.inputSchema && tool.inputSchema.required) || []
     }
   }));
 }

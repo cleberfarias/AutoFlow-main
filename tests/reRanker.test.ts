@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reRank } from '../services/reRanker.js';
+import { reRank } from '../services/reRanker';
 
 describe('reRanker', () => {
   it('ranks exact better than partial', () => {
