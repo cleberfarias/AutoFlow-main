@@ -9,6 +9,8 @@
     "deploy": "npm run build && cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build:ts": "tsc -p tsconfig.json",
     "whatsapp:start": "node connectors/whatsapp/server.js",
     "server": "PORT=5050 node connectors/whatsapp/server.js",
     "dev:full": "npm-run-all --parallel dev whatsapp:start",

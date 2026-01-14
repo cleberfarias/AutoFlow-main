@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import db from '../server/db.js';
+import db from '../server/db.ts';
 import { addAgent, listAgents, removeAgent, getNextAgent, setAgentAvailability, assignChat, getChatAssignment, clearChatAssignment } from '../server/agents.js';
 
 describe('agents store', () => {

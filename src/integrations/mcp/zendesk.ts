@@ -44,6 +44,7 @@ export interface ZendeskUser {
   custom_fields?: Record<string, any>;
   created_at?: string;
   updated_at?: string;
+  organization_id?: number;
 }
 
 export interface ZendeskComment {

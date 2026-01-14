@@ -1,4 +1,4 @@
-import db from './db.js';
+import db from './db.ts';
 
 // Agents: store as array of { id, name, available:true }
 // Rotation pointer stored in db.data.agentRotationIndex

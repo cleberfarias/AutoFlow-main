@@ -24,9 +24,9 @@ describe('ChatGuru apply forwarding', () => {
     // fake global.fetch to capture request
     const calls: any[] = [];
     const originalFetch = global.fetch;
-    global.fetch = async (url, opts) => {
+    (global as any).fetch = async (url, opts) => {
       calls.push({ url, opts });
-      return { ok: true, json: async () => ({ forwarded: true }) };
+      return { ok: true, json: async () => ({ forwarded: true }) } as any;
     };
 
     const patch = {

@@ -1,9 +1,9 @@
-import { startPeriodicCleanup, runCleanupOnce } from '../pendingCleaner.js';
+import { startPeriodicCleanup, runCleanupOnce } from '../pendingCleaner.ts';
 
-let worker = null;
-let queue = null;
+let worker: any = null;
+let queue: any = null;
 
-export async function startJobRunner(options = {}) {
+export async function startJobRunner(options: { intervalSeconds?: number; notifyFn?: (chatId: string, text: string) => Promise<void> | void } = {}) {
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
     // fallback to in-process interval
@@ -14,7 +14,7 @@ export async function startJobRunner(options = {}) {
   try {
     const { Queue, Worker } = await import('bullmq');
     queue = new Queue('pending-cleaner', { connection: { url: redisUrl } });
-    worker = new Worker('pending-cleaner', async job => {
+    worker = new Worker('pending-cleaner', async (job: any) => {
       const removed = await runCleanupOnce(options.notifyFn);
       return { removedCount: removed?.length ?? 0 };
     }, { connection: { url: redisUrl } });
@@ -22,14 +22,16 @@ export async function startJobRunner(options = {}) {
     // schedule a repeating job every intervalSeconds
     await queue.add('schedule', {}, { repeat: { every: (options.intervalSeconds || 60) * 1000 } });
 
-    worker.on('failed', (job, err) => console.error('pending-cleaner job failed', job.id, err));
+    worker.on('failed', (job: any, err: any) => console.error('pending-cleaner job failed', job.id, err));
 
     return async () => {
       await worker.close();
       await queue.close();
     };
   } catch (err) {
-    console.warn('Failed to initialize BullMQ, falling back to in-process interval:', err?.message || err);
+    console.warn('Failed to initialize BullMQ, falling back to in-process interval:', (err as any)?.message || err);
     return startPeriodicCleanup(options.intervalSeconds || 60, options.notifyFn);
   }
 }
+
+export default { startJobRunner };

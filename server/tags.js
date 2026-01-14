@@ -1,4 +1,4 @@
-import db from './db.js';
+import db from './db.ts';
 
 export async function addTag(chatId, tag) {
   if (!db.data) await db.read();

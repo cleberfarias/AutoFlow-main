@@ -29,8 +29,8 @@ describe('confirmation flow', () => {
 
   it('confirmPending executes action and records audit', async () => {
     await CONF.setPendingConfirmation('u2', { action: { type: 'RESPONDER', params: { text: 'Confirmado' } }, intent: { intentId: 'price_query', score: 0.5 }, originalText: 'Quanto custa X?' });
-    (AR.runAction as unknown as vi.Mock).mockResolvedValueOnce({ ok: true, text: 'Confirmado' });
-    (ChatAction.recordChatAction as unknown as vi.Mock).mockResolvedValueOnce({ id: 'ca_1' });
+    (AR.runAction as unknown as any).mockResolvedValueOnce({ ok: true, text: 'Confirmado' });
+    (ChatAction.recordChatAction as unknown as any).mockResolvedValueOnce({ id: 'ca_1' });
 
     const res = await CONF.confirmPending('u2');
     expect(res).not.toBeNull();

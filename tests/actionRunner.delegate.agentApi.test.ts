@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import db from '../server/db.js';
+import db from '../server/db.ts';
 import { addAgent, getChatAssignment } from '../server/agents.js';
 import { runAction } from '../services/actionRunner.js';
 import request from 'supertest';
@@ -21,7 +21,7 @@ describe('agent accept/reject API', () => {
     await addAgent('a1', 'Alice');
     const res = await runAction({ type: 'DELEGAR', params: { message: 'Please accept' } }, { chatId: 'chatX' });
     expect(res.ok).toBe(true);
-    const { getForwards } = await import('../server/forward.js');
+    const { getForwards } = await import('../server/forward.ts');
     const fwdList = await getForwards('chatX');
     expect(fwdList.length).toBeGreaterThan(0);
     const acceptRes = await request(app).post('/api/agents/a1/accept').send({ chatId: 'chatX' });
