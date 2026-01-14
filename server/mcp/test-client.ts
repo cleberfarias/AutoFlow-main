@@ -110,7 +110,7 @@ async function runTests() {
     
     // Teste 2: List Tools
     console.log('\n=== TEST 2: List Tools ===');
-    const toolsResponse = await sendRequest(server, 'tools/list');
+    const toolsResponse: any = await sendRequest(server, 'tools/list');
     console.log(`\n✅ Found ${toolsResponse.result?.tools?.length || 0} tools`);
     
     // Teste 3: Call Tool (findAvailability)
@@ -125,7 +125,7 @@ async function runTests() {
     
     // Teste 4: List Prompts
     console.log('\n=== TEST 4: List Prompts ===');
-    const promptsResponse = await sendRequest(server, 'prompts/list');
+    const promptsResponse: any = await sendRequest(server, 'prompts/list');
     console.log(`\n✅ Found ${promptsResponse.result?.prompts?.length || 0} prompts`);
     
     // Teste 5: Get Prompt

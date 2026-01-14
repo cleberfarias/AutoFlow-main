@@ -29,7 +29,7 @@ describe('router', () => {
 
   it('escala para HEURISTIC quando score alto', async () => {
     // Mock intentService
-    vi.doMock('../server/intentService.js', () => ({
+    vi.doMock('../server/intentService', () => ({
       detectIntent: vi.fn().mockResolvedValue({
         intentId: 'schedule',
         intentName: 'Agendar',
@@ -46,7 +46,7 @@ describe('router', () => {
 
   it('retorna fallback LLM_FULL em caso de erro total', async () => {
     // Mock todos os serviços falhando
-    vi.doMock('../server/intentService.js', () => ({
+    vi.doMock('../server/intentService', () => ({
       detectIntent: vi.fn().mockRejectedValue(new Error('fail'))
     }));
 

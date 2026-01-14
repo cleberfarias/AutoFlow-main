@@ -1,4 +1,4 @@
-import { detectIntent } from '../server/intentService.js';
+import { detectIntent } from '../server/intentService';
 
 export type HandlerResult = {
   action?: { type: string; params?: any } | null;

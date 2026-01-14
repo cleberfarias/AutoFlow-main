@@ -62,4 +62,4 @@ export async function detectIntent(text) {
   return { intentId: null, intentName: null, score: 0, method: 'fallback' };
 }
 
-export { detectIntent };
+// exported via the function declaration above

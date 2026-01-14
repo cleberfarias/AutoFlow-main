@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import db from '../server/db.ts';
-import { addAgent, getChatAssignment } from '../server/agents.js';
-import { runAction } from '../services/actionRunner.js';
+import { addAgent, getChatAssignment } from '../server/agents';
+import { runAction } from '../services/actionRunner';
 import request from 'supertest';
-import app from '../connectors/whatsapp/server.js';
+import app from '../connectors/whatsapp/server';
 
 const API_KEY = process.env.ADMIN_API_KEY || 'dev-admin-key';
 

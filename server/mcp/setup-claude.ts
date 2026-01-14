@@ -56,17 +56,18 @@ function setupClaudeDesktop() {
     }
     
     // Ler config existente ou criar novo
-    let config = { mcpServers: {} };
+    let config: any = { mcpServers: {} };
     if (fs.existsSync(configPath)) {
       console.log('📖 Reading existing config...');
       const existing = fs.readFileSync(configPath, 'utf8');
-      config = JSON.parse(existing);
+      config = JSON.parse(existing) as any;
       if (!config.mcpServers) {
         config.mcpServers = {};
       }
     }
     
     // Adicionar/atualizar AutoFlow server
+    config.mcpServers = config.mcpServers || {};
     config.mcpServers.autoflow = {
       command: 'node',
       args: [serverPath],

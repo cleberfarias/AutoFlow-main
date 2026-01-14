@@ -202,7 +202,7 @@ app.get('/health', (req, res) => {
 // === Core / Test helpers ===
 // Minimal endpoints required by tests: autoflow apply, poc endpoints, generate, llm, admin and agents
 import db from '../../server/db.ts';
-import * as agentsMod from '../../server/agents.js';
+import * as agentsMod from '../../server/agents';
 
 app.post('/api/autoflow/apply', async (req, res) => {
   try {
@@ -426,10 +426,10 @@ app.post('/api/agents/:agentId/reject', async (req, res) => {
 });
 
 // Inbound message entrypoint used by channels to deliver incoming messages.
-import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeStore.js';
+import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeStore';
 import { routeMessage } from '../../services/router';
 import { callTool } from '../../server/tools/registry.ts';
-import { logEvent } from '../../server/observability/logEvent.js';
+import { logEvent } from '../../server/observability/logEvent';
 import crypto from 'crypto';
 
 app.post('/api/inbound/message', async (req, res) => {

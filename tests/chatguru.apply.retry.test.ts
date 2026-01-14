@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app from '../connectors/whatsapp/server.js';
+import app from '../connectors/whatsapp/server';
 import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('ChatGuru apply forwarding retries', () => {

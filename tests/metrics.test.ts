@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import * as MET from '../server/metrics.js';
+import * as MET from '../server/metrics';
 import * as CONF from '../server/confirmation';
 import * as PC from '../server/pendingCleaner';
 import db from '../server/db';

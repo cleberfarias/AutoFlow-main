@@ -142,7 +142,7 @@ export async function detectIntent(text: string): Promise<IntentMatch> {
   // they will further influence the ranking. Dynamic import to avoid cycles in tests.
   if (candidates.length > 1) {
     try {
-      const { reRank } = await import('./reRanker.js');
+      const { reRank } = await import('./reRanker');
       const ranked = reRank(text, candidates.map(c => ({ intentId: c.intent?.id ?? '', intentName: c.intent?.name, example: c.example, score: c.score })), { normalizeWeight: 1.0, existingWeight: 0.7 });
       const top = ranked[0];
       return {
@@ -180,7 +180,7 @@ export async function detectIntent(text: string): Promise<IntentMatch> {
       // If we had multiple heuristic candidates, run re-ranker that can combine existing score and embedding sim
       if (candidates.length > 0) {
         try {
-          const { reRank } = await import('./reRanker.js');
+          const { reRank } = await import('./reRanker');
           // prepare candidates combining heuristic score and embedding similarity where available
           const mergedCandidates: any[] = [];
           for (const c of candidates) {
