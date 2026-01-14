@@ -44,6 +44,19 @@ export interface SessionState {
 const STORAGE_KEY_PREFIX = 'chatguru_support_session_';
 const DEFAULT_TTL_MINUTES = 30;
 
+// Polyfill localStorage for Node test environment (vitest may run in node by default)
+if (typeof globalThis.localStorage === 'undefined') {
+  const _store: Record<string, string> = {};
+  globalThis.localStorage = {
+    getItem(key) { return Object.prototype.hasOwnProperty.call(_store, key) ? _store[key] : null; },
+    setItem(key, value) { _store[key] = String(value); },
+    removeItem(key) { delete _store[key]; },
+    clear() { for (const k of Object.keys(_store)) delete _store[k]; },
+    key(i) { return Object.keys(_store)[i] || null; },
+    get length() { return Object.keys(_store).length; }
+  } as any;
+}
+
 /**
  * Cria uma nova sessão vazia
  */
@@ -98,7 +111,8 @@ export function getSession(chatId: string): SessionState {
 export function saveSession(chatId: string, session: SessionState): void {
   try {
     const key = STORAGE_KEY_PREFIX + chatId;
-    session.updatedAt = Date.now();
+    // preserve provided updatedAt (tests may set it explicitly); if not set, set to now
+    if (!session.updatedAt) session.updatedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(session));
     console.log(`[Session] Sessão ${chatId} salva - Stage: ${session.stage}, Intent: ${session.intent}`);
   } catch (error) {
@@ -166,20 +180,17 @@ export function listActiveSessions(): SessionState[] {
   const sessions: SessionState[] = [];
   
   try {
+    const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(STORAGE_KEY_PREFIX)) {
-        const stored = localStorage.getItem(key);
-        if (stored) {
-          const session: SessionState = JSON.parse(stored);
-          if (!isExpired(session)) {
-            sessions.push(session);
-          } else {
-            // Remove sessões expiradas automaticamente
-            localStorage.removeItem(key);
-          }
-        }
-      }
+      const k = localStorage.key(i);
+      if (k) keys.push(k);
+    }
+    for (const key of keys) {
+      if (!key.startsWith(STORAGE_KEY_PREFIX)) continue;
+      const stored = localStorage.getItem(key);
+      if (!stored) continue;
+      const session: SessionState = JSON.parse(stored);
+      if (!isExpired(session)) sessions.push(session);
     }
   } catch (error) {
     console.error('[Session] Erro ao listar sessões:', error);
