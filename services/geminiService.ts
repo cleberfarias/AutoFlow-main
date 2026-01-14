@@ -51,25 +51,19 @@ export async function generateWorkflowFromPrompt(prompt: string): Promise<Workfl
 }
 
 export async function getSuggestions(prompt: string): Promise<string[]> {
-  const openai = getOpenAI();
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: `Sugira 3 formas rápidas de aumentar o faturamento usando automação.
-Responda SOMENTE com JSON no formato { "suggestions": ["...", "...", "..."] }.`
-      },
-      { role: "user", content: `Pedido: "${prompt}"` }
-    ]
-  });
-  try { 
-    const content = response.choices[0]?.message?.content || "";
-    const parsed = parseJson<{ suggestions?: string[] } | string[]>(content);
-    if (Array.isArray(parsed)) return parsed;
-    return parsed?.suggestions || []; 
-  } catch { 
-    return ["Fidelização Automática", "Upsell no Checkout", "Lembrete de Reagendamento"]; 
+  try {
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    if (!resp.ok) return ["Fidelização Automática", "Upsell no Checkout", "Lembrete de Reagendamento"];
+    const data = await resp.json().catch(() => ({}));
+    // Try to extract suggestions from returned steps or suggestions field
+    if (Array.isArray(data?.suggestions)) return data.suggestions;
+    if (Array.isArray(data?.steps)) return (data.steps || []).slice(0,3).map((s:any)=> s.title || s.id || 'Sugestão');
+    return ["Fidelização Automática", "Upsell no Checkout", "Lembrete de Reagendamento"];
+  } catch (e) {
+    return ["Fidelização Automática", "Upsell no Checkout", "Lembrete de Reagendamento"];
   }
 }

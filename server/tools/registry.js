@@ -113,3 +113,53 @@ registerTool({
     return await response.json();
   }
 });
+
+// Tool para envio via Gupshup (simulada/forward para local test endpoint)
+registerTool({
+  name: 'whatsapp.gupshup.sendMessage',
+  description: 'Envia mensagem via Gupshup',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to: { type: 'string' },
+      text: { type: 'string' }
+    },
+    required: ['to', 'text']
+  },
+  handler: async (args, context) => {
+    // Em ambiente de teste, encaminha para um endpoint local que os testes podem espiar
+    const target = process.env.GUPSHUP_FORWARD_URL || 'http://localhost:5050/api/poc/send-whatsapp';
+    const res = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: args.to, text: args.text, context })
+    });
+    if (!res.ok) throw new Error(`Gupshup send failed: ${res.status}`);
+    return res.json();
+  }
+});
+
+// Tool para envio via Web (browser em produção, stub para testes)
+registerTool({
+  name: 'whatsapp.web.sendMessage',
+  description: 'Envia mensagem via WhatsApp Web client (stub)',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to: { type: 'string' },
+      text: { type: 'string' }
+    },
+    required: ['to', 'text']
+  },
+  handler: async (args, context) => {
+    // In test env we forward to same poc endpoint
+    const target = process.env.WHATSAPP_WEB_FORWARD_URL || 'http://localhost:5050/api/poc/send-whatsapp';
+    const res = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: args.to, text: args.text, context })
+    });
+    if (!res.ok) throw new Error(`WhatsApp Web send failed: ${res.status}`);
+    return res.json();
+  }
+});
