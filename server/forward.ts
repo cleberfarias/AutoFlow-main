@@ -1,10 +1,10 @@
-import db from './db.js';
+import db from './db.ts';
 
-export async function forwardMessage(fromChatId, target, text, options = {}) {
+export async function forwardMessage(fromChatId: string, target: string, text: string, options: any = {}) {
   if (!db.data) await db.read();
   if (!db.data.forwards) db.data.forwards = [];
   const createdAt = new Date().toISOString();
-  const record = { id: `f_${Date.now()}_${Math.floor(Math.random() * 9999)}`, fromChatId, target, text, options, createdAt };
+  const record = { id: `f_${Date.now()}_${Math.floor(Math.random() * 9999)}`, fromChatId, target, text, options, createdAt } as any;
   db.data.forwards.push(record);
   try {
     await db.write();
@@ -21,10 +21,10 @@ export async function forwardMessage(fromChatId, target, text, options = {}) {
   return record;
 }
 
-export async function getForwards(forChatId) {
+export async function getForwards(forChatId: string) {
   if (!db.data) await db.read();
   if (!db.data.forwards) return [];
-  return db.data.forwards.filter(f => f.fromChatId === forChatId);
+  return db.data.forwards.filter((f: any) => f.fromChatId === forChatId);
 }
 
 export default { forwardMessage, getForwards };

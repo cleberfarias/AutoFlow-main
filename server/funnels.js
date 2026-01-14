@@ -1,4 +1,4 @@
-import db from './db.js';
+import db from './db.ts';
 
 export async function createFunnel(funnelId, name) {
   if (!db.data) await db.read();

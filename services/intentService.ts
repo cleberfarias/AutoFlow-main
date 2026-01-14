@@ -20,7 +20,7 @@ export type IntentMatch = {
 };
 
 let INTENTS: Intent[] | null = null;
-let EMBEDDINGS_CACHE: LRU<string, number[]> | null = null;
+let EMBEDDINGS_CACHE: any = null;
 
 function loadIntents(): Intent[] {
   if (INTENTS) return INTENTS;
@@ -70,7 +70,7 @@ async function computeEmbeddingsIfNeeded() {
     const { getOpenAI } = await import("./openaiClient");
     const openai = getOpenAI();
     const intents = loadIntents();
-    EMBEDDINGS_CACHE = new LRU<string, number[]>({ max: 5000 });
+    EMBEDDINGS_CACHE = new (LRU as any)({ max: 5000 });
     for (const it of intents) {
       for (const ex of it.examples) {
         const key = `${it.id}:::${ex}`;

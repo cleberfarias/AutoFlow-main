@@ -1,4 +1,4 @@
-import { Workflow } from "../../types";
+import { Workflow } from "../../../types";
 import { slugify } from "../../utils/slug";
 
 export type GenericNode = {

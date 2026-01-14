@@ -8,7 +8,7 @@ describe('actionRunner TOOL_CALL', () => {
 
   it('executa tool com sucesso quando registry retorna success', async () => {
     // Mock tool registry
-    vi.doMock('../server/tools/registry.js', () => ({
+    vi.doMock('../server/tools/registry.ts', () => ({
       callTool: vi.fn().mockResolvedValue({
         success: true,
         result: { found: true, suggestedStart: '2025-01-15T10:00:00Z' }
@@ -41,7 +41,7 @@ describe('actionRunner TOOL_CALL', () => {
   });
 
   it('retorna erro quando tool falha', async () => {
-    vi.doMock('../server/tools/registry.js', () => ({
+    vi.doMock('../server/tools/registry.ts', () => ({
       callTool: vi.fn().mockResolvedValue({
         success: false,
         error: 'Tool not found'

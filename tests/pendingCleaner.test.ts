@@ -23,7 +23,7 @@ describe('pendingCleaner', () => {
     await db.write();
 
     const notifier = vi.fn();
-    (ChatAction.recordChatAction as unknown as vi.Mock).mockResolvedValueOnce({ id: 'ca_100' });
+    (ChatAction.recordChatAction as unknown as any).mockResolvedValueOnce({ id: 'ca_100' });
 
     const removed = await PC.runCleanupOnce(notifier);
     expect(removed.length).toBeGreaterThan(0);

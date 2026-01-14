@@ -1,4 +1,5 @@
 import { generateResponse } from './llmResponder';
+import * as ChatAction from '../server/chatAction';
 
 export type Action = {
   type: string;
@@ -32,8 +33,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       const text = await generateResponse(prompt, { model, maxTokens, systemPrompt });
       // record audit
       try {
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'ASSISTANT_GPT', text, timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'ASSISTANT_GPT', text, timestamp: new Date().toISOString() });
       } catch (err) {
         // ignore recording failures
       }
@@ -54,8 +54,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       const t = action.params?.text || '';
       const text = replaceVariables(t, context);
       try {
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'RESPONDER', text, timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'RESPONDER', text, timestamp: new Date().toISOString() });
       } catch (err) {
         // ignore
       }
@@ -77,8 +76,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       try {
         const { addTag } = await import('../server/tags.js');
         const tags = await addTag(context.chatId || null, tag);
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'TAG', text: tag, timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'TAG', text: tag, timestamp: new Date().toISOString() });
         try {
           const { increment } = await import('../server/metrics.js');
           increment('actions_executed', 1);
@@ -95,10 +93,9 @@ export async function runAction(action: Action, context: Record<string, any> = {
       if (!target) return { ok: false, type: 'ENCAMINHAR', raw: 'missing_target' };
       try {
         const msg = replaceVariables(messageTemplate, context);
-        const { forwardMessage } = await import('../server/forward.js');
+        const { forwardMessage } = await import('../server/forward.ts');
         const fwd = await forwardMessage(context.chatId || null, target, msg, { meta: action.params?.meta || {} });
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'ENCAMINHAR', text: JSON.stringify({ target, msg }), timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'ENCAMINHAR', text: JSON.stringify({ target, msg }), timestamp: new Date().toISOString() });
         try {
           const { increment } = await import('../server/metrics.js');
           increment('actions_executed', 1);
@@ -116,8 +113,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       try {
         const { setChatFunnel } = await import('../server/funnels.js');
         const chat = await setChatFunnel(context.chatId || null, funnelId, stepId);
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'FUNIL', text: JSON.stringify({ funnelId, stepId }), timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'FUNIL', text: JSON.stringify({ funnelId, stepId }), timestamp: new Date().toISOString() });
         try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
         return { ok: true, type: 'FUNIL', text: `${funnelId}:${stepId || ''}`, raw: chat };
       } catch (err) {
@@ -131,8 +127,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       try {
         const { setChatStatus } = await import('../server/status.js');
         const chat = await setChatStatus(context.chatId || null, status);
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'STATUS', text: status, timestamp: new Date().toISOString() });
+        await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'STATUS', text: status, timestamp: new Date().toISOString() });
         try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
         return { ok: true, type: 'STATUS', text: status, raw: chat };
       } catch (err) {
@@ -151,14 +146,13 @@ export async function runAction(action: Action, context: Record<string, any> = {
         const text = action.params?.message ? replaceVariables(action.params.message, context) : `Conectando você a ${agent.name}`;
         // send notification/forward to agent so they can accept/reject
         try {
-          const { forwardMessage } = await import('../server/forward.js');
+          const { forwardMessage } = await import('../server/forward.ts');
           const notif = await forwardMessage(context.chatId || null, agent.id, JSON.stringify({ type: 'delegation', chatId: context.chatId, message: text, agentId: agent.id, instructions: 'Responda /accept ou /reject via API' }));
           agent.forward = notif;
         } catch (err) {
           // ignore forward failures
         }
-        const { recordChatAction } = await import('../server/chatAction.js');
-        await recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'DELEGAR', text: `${agent.id}`, timestamp: new Date().toISOString() });
+          await ChatAction.recordChatAction({ chatId: context.chatId || null, intentId: context.intentId || null, intentScore: context.intentScore ?? null, actionType: 'DELEGAR', text: `${agent.id}`, timestamp: new Date().toISOString() });
         try { const { increment } = await import('../server/metrics.js'); increment('actions_executed', 1); } catch (e) {}
         return { ok: true, type: 'DELEGAR', text, raw: agent };
       } catch (err) {
@@ -176,7 +170,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
       }
 
       try {
-        const { callTool } = await import('../server/tools/registry.js');
+        const { callTool } = await import('../server/tools/registry.ts');
         const result = await callTool(toolName, toolArgs, context);
         
         if (!result.success) {
@@ -191,8 +185,7 @@ export async function runAction(action: Action, context: Record<string, any> = {
 
         // Record action
         try {
-          const { recordChatAction } = await import('../server/chatAction.js');
-          await recordChatAction({ 
+          await ChatAction.recordChatAction({ 
             chatId: context.chatId || null, 
             intentId: context.intentId || null, 
             intentScore: context.intentScore ?? null, 

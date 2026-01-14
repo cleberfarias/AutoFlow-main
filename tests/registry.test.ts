@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { registerTool, callTool, _test_resetAll } from '../server/tools/registry.js';
+import { registerTool, callTool, _test_resetAll } from '../server/tools/registry';
 
 beforeEach(() => {
   _test_resetAll();

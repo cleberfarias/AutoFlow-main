@@ -1,24 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
-export async function getStorage(key) {
+export async function getStorage(key: string) {
   try {
-    const r = await prisma.storage.findUnique({ where: { key } });
+    const r = await prisma.storage.findUnique({ where: { key } as any });
     return r ? r.value : null;
-  } catch (e) {
+  } catch (e: any) {
     console.warn('storagePrisma.getStorage failed:', e && e.message ? e.message : e);
     return null;
   }
 }
 
-export async function setStorage(key, value) {
+export async function setStorage(key: string, value: string) {
   try {
     await prisma.storage.upsert({
-      where: { key },
-      create: { key, value },
-      update: { value }
+      where: { key } as any,
+      create: { key, value } as any,
+      update: { value } as any,
     });
-  } catch (e) {
+  } catch (e: any) {
     console.warn('storagePrisma.setStorage failed:', e && e.message ? e.message : e);
   }
 }

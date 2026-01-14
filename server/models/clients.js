@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { randomUUID } from 'crypto';
-import db from '../db.js';
+import db from '../db.ts';
 
 const ALGO = 'aes-256-gcm';
 const SECRET = process.env.CREDENTIALS_SECRET || 'dev-secret-change';

@@ -39,7 +39,7 @@ export interface RDEvent {
   event_type: string;
   event_family: string;
   payload: {
-    conversion_identifier: string;
+    conversion_identifier?: string;
     email?: string;
     name?: string;
     [key: string]: any;

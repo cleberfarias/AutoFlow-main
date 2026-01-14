@@ -10,7 +10,7 @@
  */
 
 import { createInterface } from 'readline';
-import { listTools as getRegistryTools, callTool as executeRegistryTool } from '../tools/registry.js';
+import { listTools as getRegistryTools, callTool as executeRegistryTool } from '../tools/registry.ts';
 
 // MCP Protocol Version
 const MCP_VERSION = '2024-11-05';

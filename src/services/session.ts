@@ -111,8 +111,13 @@ export function getSession(chatId: string): SessionState {
 export function saveSession(chatId: string, session: SessionState): void {
   try {
     const key = STORAGE_KEY_PREFIX + chatId;
-    // preserve provided updatedAt (tests may set it explicitly); if not set, set to now
-    if (!session.updatedAt) session.updatedAt = Date.now();
+    // Update `updatedAt` when it wasn't intentionally modified by callers/tests.
+    // If `updatedAt` equals `createdAt` (fresh session), treat this as an implicit
+    // save and set it to now. If callers set `updatedAt` explicitly (e.g. to simulate
+    // expiration), preserve that value.
+    if (session.updatedAt === session.createdAt) {
+      session.updatedAt = Date.now();
+    }
     localStorage.setItem(key, JSON.stringify(session));
     console.log(`[Session] Sessão ${chatId} salva - Stage: ${session.stage}, Intent: ${session.intent}`);
   } catch (error) {
