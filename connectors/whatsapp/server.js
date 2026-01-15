@@ -425,6 +425,58 @@ app.post('/api/agents/:agentId/reject', async (req, res) => {
   res.json({ ok: true, reassignedTo: null });
 });
 
+// --- Tools test endpoint (mock)
+function resolveMockVars(obj, ctx = {}) {
+  if (Array.isArray(obj)) return obj.map(o => resolveMockVars(o, ctx));
+  if (obj && typeof obj === 'object') {
+    if (obj.type === 'var' && obj.path) {
+      // simple path resolver from ctx, return placeholder if not found
+      const parts = String(obj.path).split('.');
+      let v = ctx;
+      for (const p of parts) {
+        if (v && Object.prototype.hasOwnProperty.call(v, p)) v = v[p]; else { v = `{{${obj.path}}}`; break; }
+      }
+      return v;
+    }
+    const out = {};
+    for (const k of Object.keys(obj)) out[k] = resolveMockVars(obj[k], ctx);
+    return out;
+  }
+  return obj;
+}
+
+app.post('/api/tools/test', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const { toolName, args = {}, mockContext = {} } = body;
+    if (!toolName) return res.status(400).json({ error: 'toolName required' });
+
+    const start = Date.now();
+    // resolve variables in args using mockContext
+    const resolvedArgs = resolveMockVars(args, mockContext);
+
+    // simulate execution latency
+    const latency = 120 + Math.floor(Math.random() * 400);
+    await new Promise(r => setTimeout(r, latency));
+
+    // produce a fake but structured response depending on toolName
+    const response = {
+      success: true,
+      tool: toolName,
+      request: { args, resolvedArgs },
+      result: {
+        message: `Mocked execution of ${toolName}`,
+        timestamp: Date.now()
+      }
+    };
+
+    const durationMs = Date.now() - start;
+    return res.json({ ok: true, durationMs, response });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
 // Inbound message entrypoint used by channels to deliver incoming messages.
 import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeStore.ts';
 import { routeMessage } from '../../services/router.ts';
