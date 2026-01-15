@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { MCPListPanel } from './MCPNode';
 import AddActionModal from '../src/components/Integrations/AddActionModal';
+import manifest from '../src/integrations/manifest';
 import ActionStepNode from '../src/components/Integrations/ActionStepNode';
 import { StepType } from '../types';
 
@@ -36,7 +37,36 @@ export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
   };
 
   // derive available variables from current workflow steps
-  const availableVars = (workflow?.steps || []).map(s => ({ path: `steps.${s.id}.result`, label: `${s.title}` }));
+  function extractPathsFromSchema(schema: any, prefix = ''): { path: string; label?: string }[] {
+    if (!schema || typeof schema !== 'object') return [];
+    const props = schema.properties || {};
+    const entries: { path: string; label?: string }[] = [];
+    for (const k of Object.keys(props)) {
+      const p = props[k];
+      entries.push({ path: `${prefix}${k}`, label: p.title || k });
+      // shallow nesting
+      if (p.type === 'object' && p.properties) {
+        for (const k2 of Object.keys(p.properties)) {
+          entries.push({ path: `${prefix}${k}.${k2}`, label: `${p.title || k}.${p.properties[k2].title || k2}` });
+        }
+      }
+    }
+    return entries;
+  }
+
+  const availableVars = [] as { path: string; label?: string }[];
+  (workflow?.steps || []).forEach(s => {
+    availableVars.push({ path: `steps.${s.id}.result`, label: s.title });
+    // if step has MCP tool info, try to include output schema fields
+    const toolName = s.params?.mcp?.toolName || s.params?.mcp?.action;
+    if (toolName) {
+      const toolDef = manifest.tools.find(t => t.name === toolName);
+      if (toolDef && toolDef.outputSchema) {
+        const paths = extractPathsFromSchema(toolDef.outputSchema, `steps.${s.id}.result.`);
+        paths.forEach(p => availableVars.push(p));
+      }
+    }
+  });
 
   return (
     <div className="p-4 bg-slate-800 rounded-lg space-y-4">

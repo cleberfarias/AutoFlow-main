@@ -36,6 +36,7 @@ import { i18n } from './services/i18n';
 import { exportWorkflowToChatGuru } from './src/integrations/chatguru/exporter';
 import { validateChatGuruPatch } from './src/integrations/chatguru/validator';
 import ChatGuruClient from './src/integrations/chatguru/client';
+import manifest from './src/integrations/manifest';
 // Generic patch and adapters
 import { exportGenericPatch } from './src/core/patch/genericV1';
 import { compileToChatGuru } from './src/adapters/chatguru/compile';
@@ -1302,12 +1303,46 @@ const App: React.FC = () => {
       </main>
       
       {/* Modal MCP */}
-      <AddActionModal
-        isOpen={showMCPModal}
-        onClose={() => setShowMCPModal(false)}
-        onAdd={handleAddMCPNode}
-        availableVars={(activeWorkflow?.steps || []).map(s=> ({ path: `steps.${s.id}.result`, label: s.title }))}
-      />
+      {/* derive availableVars from activeWorkflow steps + manifest outputSchema */}
+      {(() => {
+        function extractPathsFromSchema(schema: any, prefix = ''): { path: string; label?: string }[] {
+          if (!schema || typeof schema !== 'object') return [];
+          const props = schema.properties || {};
+          const entries: { path: string; label?: string }[] = [];
+          for (const k of Object.keys(props)) {
+            const p = props[k];
+            entries.push({ path: `${prefix}${k}`, label: p.title || k });
+            if (p.type === 'object' && p.properties) {
+              for (const k2 of Object.keys(p.properties)) {
+                entries.push({ path: `${prefix}${k}.${k2}`, label: `${p.title || k}.${p.properties[k2].title || k2}` });
+              }
+            }
+          }
+          return entries;
+        }
+
+        const vars: { path: string; label?: string }[] = [];
+        (activeWorkflow?.steps || []).forEach(s => {
+          vars.push({ path: `steps.${s.id}.result`, label: s.title });
+          const toolName = s.params?.mcp?.toolName || s.params?.mcp?.action;
+          if (toolName) {
+            const toolDef = manifest.tools.find(t => t.name === toolName);
+            if (toolDef && toolDef.outputSchema) {
+              const paths = extractPathsFromSchema(toolDef.outputSchema, `steps.${s.id}.result.`);
+              paths.forEach(p => vars.push(p));
+            }
+          }
+        });
+
+        return (
+          <AddActionModal
+            isOpen={showMCPModal}
+            onClose={() => setShowMCPModal(false)}
+            onAdd={handleAddMCPNode}
+            availableVars={vars}
+          />
+        );
+      })()}
 
       {/* Modal AI Routing */}
       {editingAIRoutingStep && (
