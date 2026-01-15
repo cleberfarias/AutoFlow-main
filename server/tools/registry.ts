@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
-import { logTool } from '../observability/toolLog';
-import { sendMessage as gupshupSend } from './clients/gupshupClient';
+import { logTool } from '../observability/toolLog.ts';
+import { sendMessage as gupshupSend } from './clients/gupshupClient.ts';
 
 type ToolEntry = { name: string; handler: Function; config: any };
 
