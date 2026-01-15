@@ -1332,6 +1332,26 @@ const App: React.FC = () => {
               paths.forEach(p => vars.push(p));
             }
           }
+          // include outputSample fields if present
+          const sample = s.params?.mcp?.outputSample;
+          if (sample && typeof sample === 'object') {
+            function extractFromSample(obj: any, prefix = ''): { path: string; label?: string }[] {
+              const out: { path: string; label?: string }[] = [];
+              if (obj && typeof obj === 'object') {
+                for (const k of Object.keys(obj)) {
+                  const val = obj[k];
+                  out.push({ path: `${prefix}${k}`, label: k });
+                  if (val && typeof val === 'object' && !Array.isArray(val)) {
+                    const child = extractFromSample(val, `${prefix}${k}.`);
+                    child.forEach(c => out.push(c));
+                  }
+                }
+              }
+              return out;
+            }
+            const sampPaths = extractFromSample(sample, `steps.${s.id}.result.`);
+            sampPaths.forEach(p => vars.push(p));
+          }
         });
 
         return (

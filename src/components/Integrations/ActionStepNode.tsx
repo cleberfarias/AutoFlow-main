@@ -31,7 +31,21 @@ export default function ActionStepNode({ node, onUpdate, onEdit, onDelete }: Pro
       if (!r.ok) {
         setError(json?.error || `HTTP ${r.status}`);
       } else {
-        setResp({ request: payload, response: json?.response || json, durationMs });
+        const sample = json?.response || json;
+        setResp({ request: payload, response: sample, durationMs });
+        // persist sample into node so VariablePicker can read real outputs
+        const next = {
+          ...node,
+          params: {
+            ...(node.params || {}),
+            mcp: {
+              ...(node.params?.mcp || {}),
+              outputSample: sample
+            }
+          }
+        };
+        if (onUpdate) onUpdate(next);
+        else if (onEdit) onEdit(next);
       }
     } catch (e:any) {
       setError(String(e));
