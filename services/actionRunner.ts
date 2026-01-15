@@ -1,5 +1,5 @@
-import { generateResponse } from './llmResponder';
-import * as ChatAction from '../server/chatAction';
+import { generateResponse } from './llmResponder.ts';
+import * as ChatAction from '../server/chatAction.ts';
 
 export type Action = {
   type: string;

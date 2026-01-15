@@ -202,7 +202,7 @@ app.get('/health', (req, res) => {
 // === Core / Test helpers ===
 // Minimal endpoints required by tests: autoflow apply, poc endpoints, generate, llm, admin and agents
 import db from '../../server/db.ts';
-import * as agentsMod from '../../server/agents';
+import * as agentsMod from '../../server/agents.ts';
 
 app.post('/api/autoflow/apply', async (req, res) => {
   try {
@@ -426,15 +426,15 @@ app.post('/api/agents/:agentId/reject', async (req, res) => {
 });
 
 // Inbound message entrypoint used by channels to deliver incoming messages.
-import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeStore';
-import { routeMessage } from '../../services/router';
+import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeStore.ts';
+import { routeMessage } from '../../services/router.ts';
 import { callTool } from '../../server/tools/registry.ts';
-import { logEvent } from '../../server/observability/logEvent';
-import { getConfirmation, createConfirmation, resolveConfirmation } from '../../server/runtime/confirmationStore';
-import { needsConfirmation } from '../../server/confirmation/policy';
-import { isYes, isNo } from '../../server/runtime/confirmParser';
-import { setState, getState } from '../../server/runtime/stateStore';
-import { runAction } from '../../services/actionRunner';
+import { logEvent } from '../../server/observability/logEvent.ts';
+import { getConfirmation, createConfirmation, resolveConfirmation } from '../../server/runtime/confirmationStore.ts';
+import { needsConfirmation } from '../../server/confirmation/policy.ts';
+import { isYes, isNo } from '../../server/runtime/confirmParser.ts';
+import { setState, getState } from '../../server/runtime/stateStore.ts';
+import { runAction } from '../../services/actionRunner.ts';
 import crypto from 'crypto';
 
 app.post('/api/inbound/message', async (req, res) => {
