@@ -8,16 +8,16 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
   const [mockResp, setMockResp] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const action = manifest.actions.find(a=> a.id === node.actionId);
-  const service = manifest.services.find(s=> s.id === node.serviceId);
+  const action = manifest.actions.find(a=> a.id === node.params?.mcp?.action);
+  const service = manifest.services.find(s=> s.id === node.params?.mcp?.service);
 
   async function testAction(){
     setLoading(true); setMockResp(null);
     const start = Date.now();
     // resolve args mapping (mock): replace variables with example values
     const resolved = {};
-    for(const k of Object.keys(node.argsMapping || {})){
-      const v = node.argsMapping[k];
+    for(const k of Object.keys(node.params?.mcp?.params || {})){
+      const v = node.params.mcp.params[k];
       if (v && v.type === 'var') resolved[k] = `{{${v.path}}}`;
       else resolved[k] = v;
     }
@@ -29,7 +29,16 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
   }
 
   function onFieldChange(k:any, v:any){
-    const next = { ...node, argsMapping: { ...(node.argsMapping || {}), [k]: v } };
+    const next = { 
+      ...node, 
+      params: {
+        ...(node.params || {}),
+        mcp: {
+          ...(node.params?.mcp || {}),
+          params: { ...(node.params?.mcp?.params || {}), [k]: v }
+        }
+      }
+    };
     onUpdate(next);
   }
 
@@ -48,10 +57,10 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
       {open && (
         <div className="mt-3">
           <div className="text-sm text-slate-300 mb-2">Campos</div>
-          {Object.keys(node.argsMapping || {}).length === 0 && (
+          {Object.keys(node.params?.mcp?.params || {}).length === 0 && (
             <div className="text-xs text-slate-400">Sem campos configurados</div>
           )}
-          {Object.entries(node.argsMapping || {}).map(([k,v])=> (
+          {Object.entries(node.params?.mcp?.params || {}).map(([k,v])=> (
             <div key={k} className="flex items-center gap-2 mb-2">
               <div className="w-40 text-slate-300 text-sm">{k}</div>
               <input value={typeof v === 'object' ? JSON.stringify(v) : String(v)} onChange={e=> onFieldChange(k, e.target.value)} className="flex-1 px-2 py-1 rounded bg-slate-700 text-white" />

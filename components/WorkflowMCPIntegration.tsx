@@ -5,7 +5,9 @@
  */
 
 import React, { useState } from 'react';
-import { MCPNodeCard, MCPSelectorModal, MCPListPanel } from './MCPNode';
+import { MCPListPanel } from './MCPNode';
+import AddActionModal from '../src/components/Integrations/AddActionModal';
+import ActionStepNode from '../src/components/Integrations/ActionStepNode';
 import { StepType } from '../types';
 
 /**
@@ -17,28 +19,18 @@ import { StepType } from '../types';
 export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
   const [showMCPModal, setShowMCPModal] = useState(false);
 
-  const handleAddMCPNode = (mcpConfig: any) => {
-    // Criar novo step MCP
-    const newStep = {
+  const handleAddMCPNode = (mcpNodeOrConfig: any) => {
+    // mcpNodeOrConfig may be a full node (from AddActionModal) or a mcp config
+    const newStep = mcpNodeOrConfig.id ? mcpNodeOrConfig : {
       id: `mcp-${Date.now()}`,
       type: StepType.MCP,
-      title: `${getMCPLabel(mcpConfig.service)} - ${getMCPActionLabel(mcpConfig.action)}`,
-      description: `Integração ${mcpConfig.service}`,
-      params: {
-        mcp: mcpConfig
-      },
-      position: {
-        x: 400,
-        y: 300 + (workflow.steps.length * 100)
-      }
+      title: `${getMCPLabel(mcpNodeOrConfig.service)} - ${getMCPActionLabel(mcpNodeOrConfig.action)}`,
+      description: `Integração ${mcpNodeOrConfig.service}`,
+      params: { mcp: mcpNodeOrConfig },
+      position: { x: 400, y: 300 + (workflow.steps.length * 100) }
     };
 
-    // Adicionar ao workflow
-    const updatedWorkflow = {
-      ...workflow,
-      steps: [...workflow.steps, newStep]
-    };
-
+    const updatedWorkflow = { ...workflow, steps: [...workflow.steps, newStep] };
     onUpdateWorkflow(updatedWorkflow);
     setShowMCPModal(false);
   };
@@ -82,7 +74,7 @@ export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
           onClick={() => setShowMCPModal(true)}
           className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded hover:from-purple-700 hover:to-blue-700 font-semibold shadow-lg transition-all"
         >
-          🔌 + MCP Integration
+          ➕ Adicionar Ação (Integração)
         </button>
 
         {/* Botões auxiliares */}
@@ -102,10 +94,10 @@ export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
       </div>
 
       {/* Modal de Seleção MCP */}
-      <MCPSelectorModal
+      <AddActionModal
         isOpen={showMCPModal}
         onClose={() => setShowMCPModal(false)}
-        onSelect={handleAddMCPNode}
+        onAdd={handleAddMCPNode}
       />
     </div>
   );
@@ -134,7 +126,7 @@ export function WorkflowCanvas({ workflow, onEditNode, onDeleteNode }) {
                 width: 280
               }}
             >
-              <MCPNodeCard
+              <ActionStepNode
                 node={step}
                 onEdit={onEditNode}
                 onDelete={onDeleteNode}
@@ -228,7 +220,7 @@ export function useCanvasContextMenu() {
             onClick={onAddMCP}
             className="w-full text-left px-3 py-2 hover:bg-gradient-to-r hover:from-purple-600 hover:to-blue-600 text-white text-sm flex items-center gap-2 font-semibold"
           >
-            <span>🔌</span> MCP Integration
+            <span>🔌</span> Adicionar Ação (Integração)
           </button>
         </div>
       </div>
@@ -326,10 +318,10 @@ export function CompleteWorkflowEditor() {
       </div>
 
       {/* Modal MCP */}
-      <MCPSelectorModal
+      <AddActionModal
         isOpen={showMCPModal}
         onClose={() => setShowMCPModal(false)}
-        onSelect={handleAddMCPNode}
+        onAdd={handleAddMCPNode}
       />
     </div>
   );
