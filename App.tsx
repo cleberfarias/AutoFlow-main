@@ -17,7 +17,8 @@ import Dashboard from './components/Dashboard';
 import WorkflowsPage from './components/WorkflowsPage';
 import GenericPage from './components/GenericPage';
 import MCPHub from './components/MCPHub';
-import { MCPSelectorModal, MCPNodeCard } from './components/MCPNode';
+import { MCPListPanel } from './components/MCPNode';
+import AddActionModal from './src/components/Integrations/AddActionModal';
 import AIRoutingNode from './components/AIRoutingNode';
 import AIRoutingPage from './components/AIRoutingPage';
 import TemplatesPage from './components/TemplatesPage';
@@ -1286,13 +1287,13 @@ const App: React.FC = () => {
               {/* Opção MCP - DESTACADA */}
               <button
                 onClick={() => {
-                  console.log('🔌 Abrindo Modal MCP...');
+                  console.log('🔌 Abrindo Modal de Ação (Integração)...');
                   setShowMCPModal(true);
                   setContextMenu({ ...contextMenu, visible: false });
                 }}
                 className="w-full text-left px-3 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm flex items-center gap-2 font-bold rounded shadow-lg transition-all transform hover:scale-105"
               >
-                <span className="text-lg">🔌</span> MCP Integration
+                <span className="text-lg">🔌</span> Adicionar Ação (Integração)
               </button>
               </div>
             </div>
@@ -1301,10 +1302,10 @@ const App: React.FC = () => {
       </main>
       
       {/* Modal MCP */}
-      <MCPSelectorModal
+      <AddActionModal
         isOpen={showMCPModal}
         onClose={() => setShowMCPModal(false)}
-        onSelect={handleAddMCPNode}
+        onAdd={handleAddMCPNode}
       />
 
       {/* Modal AI Routing */}
