@@ -430,6 +430,11 @@ import { has as dedupeHas, set as dedupeSet } from '../../server/runtime/dedupeS
 import { routeMessage } from '../../services/router';
 import { callTool } from '../../server/tools/registry.ts';
 import { logEvent } from '../../server/observability/logEvent';
+import { getConfirmation, createConfirmation, resolveConfirmation } from '../../server/runtime/confirmationStore';
+import { needsConfirmation } from '../../server/confirmation/policy';
+import { isYes, isNo } from '../../server/runtime/confirmParser';
+import { setState, getState } from '../../server/runtime/stateStore';
+import { runAction } from '../../services/actionRunner';
 import crypto from 'crypto';
 
 app.post('/api/inbound/message', async (req, res) => {
@@ -451,28 +456,74 @@ app.post('/api/inbound/message', async (req, res) => {
     dedupeSet(hash, 60_000);
 
     const start = Date.now();
-    const routeResult = await routeMessage(String(text || ''), { chatId, tenantId, from, channel });
+    // first, check for an active confirmation for this chat
+    const active = getConfirmation(tenantId, chatId);
+    // if there is an active confirmation and message is yes/no, consume it
+    if (active && (isYes(text) || isNo(text))) {
+      const decisionYes = isYes(text);
+      let execResult = null;
+      if (decisionYes) {
+        // execute proposed action
+        try {
+          if (active.proposedAction.type === 'TOOL_CALL') {
+            execResult = await callTool(active.proposedAction.tool, active.proposedAction.args || {}, { tenantId, chatId, channel });
+          } else if (active.proposedAction.type === 'ACTION') {
+            // runAction expects an Action object
+            execResult = await runAction(active.proposedAction.payload || { type: active.proposedAction.actionName || 'UNKNOWN' }, { chatId, tenantId });
+          }
+        } catch (e) {
+          execResult = { success: false, error: String(e) };
+        }
+      } else {
+        execResult = { success: true, cancelled: true };
+      }
+
+      // cleanup and update state
+      try { resolveConfirmation(tenantId, chatId); } catch (e) {}
+      try { setState(tenantId, chatId, { stage: 'idle', lastUserText: text }); } catch (e) {}
+
+      const durationMs = Date.now() - start;
+      try { logEvent({ tenantId, channel, chatId, durationMs, outcome: decisionYes ? 'confirmed' : 'rejected', tool: active.proposedAction.tool || null }); } catch (e) {}
+
+      return res.json({ ok: true, confirmation: true, decision: decisionYes ? 'yes' : 'no', exec: execResult });
+    }
+
+    // No active confirmation consumed — proceed with routing
+    const routeResult = await routeMessage(String(text || ''), { chatId, tenantId, from, channel, state: getState(tenantId, chatId) });
     const durationMs = Date.now() - start;
 
-    // handle result
+    // if tool_call and policy requires confirmation, create one
+    if (routeResult.type === 'tool_call') {
+      const tool = routeResult.payload?.toolName || routeResult.payload?.name || routeResult.payload?.tool;
+      const args = routeResult.payload?.args || routeResult.payload?.params || {};
+      if (needsConfirmation(tool, args, { tenantId, chatId })) {
+        const prompt = `Confirma executar ${tool}? Responda SIM ou NÃO.`;
+        const conf = createConfirmation({ tenantId, chatId, channel, expiresAt: Date.now() + (10 * 60 * 1000), promptText: prompt, proposedAction: { type: 'TOOL_CALL', tool, args }, meta: routeResult.meta || {} });
+        try { setState(tenantId, chatId, { stage: 'awaiting_confirmation', lastUserText: text }); } catch (e) {}
+        try { logEvent({ tenantId, channel, chatId, durationMs, outcome: 'confirmation_created', tool }); } catch (e) {}
+        // respond with prompt (do not execute yet)
+        const toolName = channel === 'web' ? 'whatsapp.web.sendMessage' : 'whatsapp.gupshup.sendMessage';
+        const sendRes = await callTool(toolName, { to: from || chatId, text: prompt }, { tenantId, chatId, channel });
+        return res.json({ ok: true, confirmationCreated: true, prompt, sendRes });
+      }
+      // otherwise execute immediately
+      const execResult = await callTool(tool, args, { tenantId, chatId, channel });
+      try { logEvent({ tenantId, channel, chatId, durationMs, outcome: 'tool_executed', tool }); } catch (e) {}
+      return res.json({ ok: true, routed: true, route: routeResult.meta, exec: execResult });
+    }
+
+    // other types
     let execResult = null;
     if (routeResult.type === 'reply') {
       const replyText = routeResult.payload?.text || String(routeResult.payload || '');
-      // choose tool by channel
       const toolName = channel === 'web' ? 'whatsapp.web.sendMessage' : 'whatsapp.gupshup.sendMessage';
       execResult = await callTool(toolName, { to: from || chatId, text: replyText }, { tenantId, chatId, channel });
-    } else if (routeResult.type === 'tool_call') {
-      const tool = routeResult.payload?.toolName || routeResult.payload?.name || routeResult.payload?.tool;
-      const args = routeResult.payload?.args || routeResult.payload?.params || {};
-      execResult = await callTool(tool, args, { tenantId, chatId, channel });
     } else if (routeResult.type === 'action') {
-      // For MVP convert action into a reply acknowledgement
-      execResult = { success: true, result: { acknowledged: true, action: routeResult.payload } };
+      execResult = await runAction(routeResult.payload || { type: 'UNKNOWN' }, { chatId, tenantId });
     } else if (routeResult.type === 'handoff') {
       execResult = { success: true, handoff: true };
     }
 
-    // observability
     try { logEvent({ tenantId, channel, chatId, durationMs, outcome: routeResult.type, tool: execResult?.result?.tool || null }); } catch (e) {}
 
     return res.json({ ok: true, routed: true, route: routeResult.meta, exec: execResult });
