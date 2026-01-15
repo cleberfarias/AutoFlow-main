@@ -1,5 +1,95 @@
 import React, { useState } from 'react';
 import manifest from '../../integrations/manifest';
+import SchemaForm from '../../utils/schemaForm';
+import { WorkflowStep } from '../../../types';
+
+type Props = {
+  node: WorkflowStep;
+  availableVars?: { path: string; label?: string }[];
+};
+
+function resolveBinding(binding: any, ctx: Record<string, any>) {
+  if (!binding) return null;
+  if (binding.type === 'literal') return binding.value;
+  if (binding.type === 'var') return ctx[binding.path] ?? `{{${binding.path}}}`;
+  return binding;
+}
+
+export default function ActionStepNode({ node, availableVars = [] }: Props) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
+
+  const actionDef = node.params?.action;
+  const toolName = actionDef?.toolName;
+  const service = actionDef?.service;
+  const argsMapping = actionDef?.argsMapping || {};
+
+  const toolDef = manifest.tools.find(t => t.name === toolName) || manifest.tools.find(t => t.serviceId === service && t.name === actionDef?.action);
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    // build mock context
+    const mockCtx: Record<string, any> = {
+      'contact.name': 'João Silva',
+      'contact.phone': '+5511999999999',
+      'message.text': 'Olá, preciso agendar',
+      'flow.lastIntent': 'agendamento'
+    };
+
+    // resolve args
+    const resolved: Record<string, any> = {};
+    for (const k of Object.keys(argsMapping)) {
+      resolved[k] = resolveBinding(argsMapping[k], mockCtx);
+    }
+
+    // mock response
+    await new Promise(r => setTimeout(r, 300));
+    const mockResponse = { ok: true, tool: toolName, resolved };
+    setTestResult({ request: resolved, response: mockResponse, timeMs: 300 });
+    setTesting(false);
+  }
+
+  return (
+    <div className="bg-slate-900 text-white rounded p-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-bold">Executar Ação</div>
+          <div className="text-sm text-slate-400">{actionDef?.action} — {service}</div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleTest} className="px-3 py-1 bg-emerald-600 rounded" disabled={testing}>{testing ? 'Testando...' : 'Testar'}</button>
+          <button onClick={()=>setShowAdvanced(s=>!s)} className="px-3 py-1 bg-slate-700 rounded">{showAdvanced ? 'Fechar JSON' : 'Avançado (JSON)'}</button>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {toolDef?.inputSchema ? (
+          <SchemaForm schema={toolDef.inputSchema} value={argsMapping} onChange={() => {}} availableVars={availableVars} />
+        ) : (
+          <div className="text-slate-400 text-sm">Nenhum schema disponível para esta ação.</div>
+        )}
+      </div>
+
+      {showAdvanced && (
+        <pre className="mt-3 p-2 bg-slate-800 rounded text-xs overflow-auto">{JSON.stringify(actionDef, null, 2)}</pre>
+      )}
+
+      {testResult && (
+        <div className="mt-3 bg-slate-800 p-2 rounded">
+          <div className="text-xs text-slate-400">Request</div>
+          <pre className="text-sm">{JSON.stringify(testResult.request, null, 2)}</pre>
+          <div className="text-xs text-slate-400 mt-2">Response</div>
+          <pre className="text-sm">{JSON.stringify(testResult.response, null, 2)}</pre>
+          <div className="text-xs text-slate-400 mt-2">Tempo: {testResult.timeMs}ms</div>
+        </div>
+      )}
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import manifest from '../../integrations/manifest';
 
 type Props = { node: any; onUpdate?: (n:any)=>void; onEdit?: (n:any)=>void; onDelete?: ()=>void };
 

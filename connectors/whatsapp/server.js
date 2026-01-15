@@ -12,15 +12,22 @@ const SKIP_WHATSAPP = process.env.SKIP_WHATSAPP === '1';
 let client;
 if (SKIP_WHATSAPP) {
   // lightweight stub to avoid puppeteer and whatsapp during tests
-  client = {
-    info: null,
-    initialize: () => {},
-    sendMessage: async (chatId, message) => ({ id: { _serialized: 'mock' }, timestamp: Date.now() }),
-    getContacts: async () => [],
-    getChats: async () => [],
-    destroy: async () => {},
-    logout: async () => {}
+  const makeStubClient = () => {
+    const listeners = {};
+    return {
+      info: null,
+      initialize: () => {},
+      sendMessage: async (chatId, message) => ({ id: { _serialized: 'mock' }, timestamp: Date.now() }),
+      getContacts: async () => [],
+      getChats: async () => [],
+      destroy: async () => {},
+      logout: async () => {},
+      on: (ev, cb) => { listeners[ev] = listeners[ev] || []; listeners[ev].push(cb); },
+      once: (ev, cb) => { const wrapper = (...args) => { try { cb(...args); } catch (e) {} finally { listeners[ev] = (listeners[ev]||[]).filter(f=>f!==wrapper); } }; listeners[ev] = listeners[ev] || []; listeners[ev].push(wrapper); },
+      emit: (ev, ...args) => { (listeners[ev] || []).forEach(f => { try { f(...args); } catch (e) {} }); }
+    };
   };
+  client = makeStubClient();
 } else {
   const realClient = new Client({
     authStrategy: new LocalAuth({ clientId: 'autoflow', dataPath: sessionDir }),

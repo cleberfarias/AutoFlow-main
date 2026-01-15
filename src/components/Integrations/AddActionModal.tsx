@@ -6,7 +6,7 @@ import { StepType } from '../../../types';
 
 type Props = { isOpen:boolean; onClose:()=>void; onAdd: (node:any)=>void; availableVars?: { path:string; label?:string }[] };
 
-export default function AddActionModal({ isOpen, onClose, onAdd }: Props) {
+export default function AddActionModal({ isOpen, onClose, onAdd, availableVars }: Props) {
   const [step, setStep] = useState(1);
   const [query, setQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState<any>(null);
@@ -28,17 +28,22 @@ export default function AddActionModal({ isOpen, onClose, onAdd }: Props) {
   function finish(){
     if(!selectedAction || !selectedService) return alert('Selecione ação e serviço');
     const toolDef = manifest.tools.find(t=> t.name === selectedAction.id && t.serviceId===selectedService.id) || manifest.tools.find(t=> t.serviceId===selectedService.id);
+
+    // argsMapping: keep binding objects from SchemaForm (literal/var)
+    const argsMapping = formValue || {};
+
     const node = {
-      id: `mcp-${Date.now()}`,
-      type: StepType.MCP,
+      id: `action-${Date.now()}`,
+      type: StepType.ACTION,
       title: `Executar Ação — ${selectedAction.title}`,
       description: selectedAction.description || '',
       params: {
-        mcp: {
+        action: {
           service: selectedService.id,
           action: selectedAction.id,
           toolName: toolDef?.name || selectedAction.id,
-          params: formValue
+          argsMapping,
+          saveResultAs: null
         }
       },
       position: { x: 400, y: 300 }
