@@ -28,9 +28,9 @@ export const translations: Translations = {
     'es-ES': 'Enrutamiento IA'
   },
   'nav.mcpHub': {
-    'pt-BR': 'MCP Hub',
-    'en-US': 'MCP Hub',
-    'es-ES': 'Centro MCP'
+    'pt-BR': 'Integrações',
+    'en-US': 'Integrations',
+    'es-ES': 'Integraciones'
   },
   'nav.templates': {
     'pt-BR': 'Templates',

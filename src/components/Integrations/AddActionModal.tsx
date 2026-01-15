@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import store from '../../store/integrationsStore';
 import manifest from '../../integrations/manifest';
 import SchemaForm from '../../utils/schemaForm';
+import { StepType } from '../../../types';
 
 type Props = { isOpen:boolean; onClose:()=>void; onAdd: (node:any)=>void };
 
@@ -26,12 +27,21 @@ export default function AddActionModal({ isOpen, onClose, onAdd }: Props) {
 
   function finish(){
     if(!selectedAction || !selectedService) return alert('Selecione ação e serviço');
+    const toolDef = manifest.tools.find(t=> t.name === selectedAction.id && t.serviceId===selectedService.id) || manifest.tools.find(t=> t.serviceId===selectedService.id);
     const node = {
-      type: 'EXECUTE_ACTION',
-      actionId: selectedAction.id,
-      serviceId: selectedService.id,
-      toolName: manifest.tools.find(t=> t.name === selectedAction.id && t.serviceId===selectedService.id)?.name || selectedAction.id,
-      argsMapping: formValue
+      id: `mcp-${Date.now()}`,
+      type: StepType.MCP,
+      title: `Executar Ação — ${selectedAction.title}`,
+      description: selectedAction.description || '',
+      params: {
+        mcp: {
+          service: selectedService.id,
+          action: selectedAction.id,
+          toolName: toolDef?.name || selectedAction.id,
+          params: formValue
+        }
+      },
+      position: { x: 400, y: 300 }
     };
     // push recent
     store.pushRecent(selectedService.id);
