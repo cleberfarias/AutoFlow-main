@@ -1,31 +1,43 @@
 import React, { useState } from 'react';
 import manifest from '../../integrations/manifest';
 
-type Props = { node: any; onUpdate: (n:any)=>void };
+type Props = { node: any; onUpdate?: (n:any)=>void; onEdit?: (n:any)=>void; onDelete?: ()=>void };
 
-export default function ActionStepNode({ node, onUpdate }: Props) {
+export default function ActionStepNode({ node, onUpdate, onEdit, onDelete }: Props) {
   const [open, setOpen] = useState(true);
-  const [mockResp, setMockResp] = useState<any>(null);
+  const [resp, setResp] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const action = manifest.actions.find(a=> a.id === node.params?.mcp?.action);
   const service = manifest.services.find(s=> s.id === node.params?.mcp?.service);
 
   async function testAction(){
-    setLoading(true); setMockResp(null);
-    const start = Date.now();
-    // resolve args mapping (mock): replace variables with example values
-    const resolved = {};
-    for(const k of Object.keys(node.params?.mcp?.params || {})){
-      const v = node.params.mcp.params[k];
-      if (v && v.type === 'var') resolved[k] = `{{${v.path}}}`;
-      else resolved[k] = v;
+    setLoading(true);
+    setResp(null);
+    setError(null);
+    try {
+      const start = Date.now();
+      const toolName = node.params?.mcp?.toolName || node.params?.mcp?.action;
+      const args = node.params?.mcp?.params || {};
+      const payload = { toolName, args, mockContext: { contact: { name: 'João Silva', phone: '+551199999999' }, message: { text: 'Olá' } } };
+
+      const r = await fetch('/api/tools/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      const json = await r.json().catch(()=>null);
+      const durationMs = Date.now() - start;
+
+      if (!r.ok) {
+        setError(json?.error || `HTTP ${r.status}`);
+      } else {
+        setResp({ request: payload, response: json?.response || json, durationMs });
+      }
+    } catch (e:any) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
     }
-    // fake response
-    await new Promise(r=> setTimeout(r, 400));
-    const resp = { ok: true, data: { example: 'result' }, durationMs: Date.now()-start, request: resolved };
-    setMockResp(resp);
-    setLoading(false);
   }
 
   function onFieldChange(k:any, v:any){
@@ -39,7 +51,8 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
         }
       }
     };
-    onUpdate(next);
+    if (onUpdate) onUpdate(next);
+    else if (onEdit) onEdit(next);
   }
 
   return (
@@ -50,8 +63,10 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
           <div className="text-xs text-slate-400">{action?.title} — {service?.title}</div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={()=>testAction()} className="px-3 py-1 bg-teal-600 rounded text-xs">Testar</button>
-          <button onClick={()=>setOpen(o=>!o)} className="px-2 py-1 bg-slate-700 rounded">{open? 'Fechar':'Abrir'}</button>
+          <button onClick={()=>testAction()} disabled={loading} className="px-3 py-1 bg-teal-600 rounded text-xs disabled:opacity-60">
+            {loading ? 'Testando...' : 'Testar'}
+          </button>
+          <button onClick={()=>setOpen(o=>!o)} className="px-2 py-1 bg-slate-700 rounded text-xs">{open? 'Fechar':'Abrir'}</button>
         </div>
       </div>
       {open && (
@@ -63,17 +78,24 @@ export default function ActionStepNode({ node, onUpdate }: Props) {
           {Object.entries(node.params?.mcp?.params || {}).map(([k,v])=> (
             <div key={k} className="flex items-center gap-2 mb-2">
               <div className="w-40 text-slate-300 text-sm">{k}</div>
-              <input value={typeof v === 'object' ? JSON.stringify(v) : String(v)} onChange={e=> onFieldChange(k, e.target.value)} className="flex-1 px-2 py-1 rounded bg-slate-700 text-white" />
+              <input value={typeof v === 'object' ? JSON.stringify(v) : String(v || '')} onChange={e=> onFieldChange(k, e.target.value)} className="flex-1 px-2 py-1 rounded bg-slate-700 text-white" />
             </div>
           ))}
 
-          {mockResp && (
+          {error && (
+            <div className="mt-3 bg-rose-900 p-3 rounded">
+              <div className="text-xs text-rose-200">Erro</div>
+              <pre className="text-xs text-rose-100 bg-rose-800 p-2 rounded">{error}</pre>
+            </div>
+          )}
+
+          {resp && (
             <div className="mt-3 bg-slate-900 p-3 rounded">
               <div className="text-xs text-slate-400">Request</div>
-              <pre className="text-xs text-slate-200 bg-slate-800 p-2 rounded">{JSON.stringify(mockResp.request,null,2)}</pre>
+              <pre className="text-xs text-slate-200 bg-slate-800 p-2 rounded">{JSON.stringify(resp.request,null,2)}</pre>
               <div className="text-xs text-slate-400 mt-2">Response</div>
-              <pre className="text-xs text-slate-200 bg-slate-800 p-2 rounded">{JSON.stringify(mockResp.data,null,2)}</pre>
-              <div className="text-xs text-slate-400 mt-2">Tempo: {mockResp.durationMs} ms</div>
+              <pre className="text-xs text-slate-200 bg-slate-800 p-2 rounded">{JSON.stringify(resp.response,null,2)}</pre>
+              <div className="text-xs text-slate-400 mt-2">Tempo: {resp.durationMs} ms</div>
             </div>
           )}
         </div>
