@@ -35,6 +35,9 @@ export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
     setShowMCPModal(false);
   };
 
+  // derive available variables from current workflow steps
+  const availableVars = (workflow?.steps || []).map(s => ({ path: `steps.${s.id}.result`, label: `${s.title}` }));
+
   return (
     <div className="p-4 bg-slate-800 rounded-lg space-y-4">
       {/* Header do Funil */}
@@ -98,6 +101,7 @@ export function WorkflowSidebarWithMCP({ workflow, onUpdateWorkflow }) {
         isOpen={showMCPModal}
         onClose={() => setShowMCPModal(false)}
         onAdd={handleAddMCPNode}
+        availableVars={availableVars}
       />
     </div>
   );

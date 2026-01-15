@@ -5,9 +5,10 @@ type Props = {
   schema: any;
   value: any;
   onChange: (v:any)=>void;
+  availableVars?: { path: string; label?: string }[];
 };
 
-export default function SchemaForm({ schema, value = {}, onChange }: Props) {
+export default function SchemaForm({ schema, value = {}, onChange, availableVars }: Props) {
   if (!schema || !schema.properties) return <div className="text-sm text-slate-400">Sem campos</div>;
   const keys = Object.keys(schema.properties || {});
   return (
@@ -27,7 +28,7 @@ export default function SchemaForm({ schema, value = {}, onChange }: Props) {
               />
             </div>
             <div className="w-10 mt-6">
-              <VariablePicker onSelect={p=> onChange({ ...value, [k]: { type:'var', path: p } })} />
+              <VariablePicker availableVars={availableVars} onSelect={p=> onChange({ ...value, [k]: { type:'var', path: p } })} />
             </div>
           </div>
         );

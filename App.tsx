@@ -1306,6 +1306,7 @@ const App: React.FC = () => {
         isOpen={showMCPModal}
         onClose={() => setShowMCPModal(false)}
         onAdd={handleAddMCPNode}
+        availableVars={(activeWorkflow?.steps || []).map(s=> ({ path: `steps.${s.id}.result`, label: s.title }))}
       />
 
       {/* Modal AI Routing */}

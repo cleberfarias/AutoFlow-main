@@ -4,7 +4,7 @@ import manifest from '../../integrations/manifest';
 import SchemaForm from '../../utils/schemaForm';
 import { StepType } from '../../../types';
 
-type Props = { isOpen:boolean; onClose:()=>void; onAdd: (node:any)=>void };
+type Props = { isOpen:boolean; onClose:()=>void; onAdd: (node:any)=>void; availableVars?: { path:string; label?:string }[] };
 
 export default function AddActionModal({ isOpen, onClose, onAdd }: Props) {
   const [step, setStep] = useState(1);
@@ -95,11 +95,11 @@ export default function AddActionModal({ isOpen, onClose, onAdd }: Props) {
                 </div>
               </div>
             )}
-            {step===3 && selectedService && (
+                {step===3 && selectedService && (
               <div>
                 <h4 className="font-bold mb-2">Configurar campos — {selectedService.title}</h4>
                 <div className="mb-3">
-                  <SchemaForm schema={manifest.tools.find(t=> t.serviceId===selectedService.id && t.name===selectedAction.id)?.inputSchema || manifest.tools.find(t=> t.serviceId===selectedService.id)?.inputSchema} value={formValue} onChange={setFormValue} />
+                  <SchemaForm schema={manifest.tools.find(t=> t.serviceId===selectedService.id && t.name===selectedAction.id)?.inputSchema || manifest.tools.find(t=> t.serviceId===selectedService.id)?.inputSchema} value={formValue} onChange={setFormValue} availableVars={availableVars} />
                 </div>
                 <div className="flex justify-end gap-2">
                   <button onClick={()=>setStep(2)} className="px-4 py-2 bg-slate-700 rounded">Voltar</button>
