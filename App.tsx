@@ -705,9 +705,10 @@ const App: React.FC = () => {
 
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard clients={clients} workflows={allWorkflows} />;
+        return <Dashboard clients={clients} workflows={allWorkflows} onCreateWorkflow={() => handleOpenNamingModal('AUTOMATION')} />;
       case 'workflows':
         return <WorkflowsPage 
+          clients={clients}
           workflows={allWorkflows} 
           onCreateWorkflow={() => handleOpenNamingModal('AUTOMATION')}
           onSelectWorkflow={(workflow) => {
@@ -715,6 +716,22 @@ const App: React.FC = () => {
             if (client) {
               setActiveClient(client);
               setActiveWorkflow(workflow);
+            }
+          }}
+          onDeleteWorkflow={(id) => {
+            const client = clients.find(c => c.automations.some(a => a.id === id));
+            if (client) {
+              setActiveClient(client);
+              deleteWorkflow(id);
+            }
+          }}
+          onExecuteWorkflow={(id) => {
+            const client = clients.find(c => c.automations.some(a => a.id === id));
+            const workflow = client?.automations.find(a => a.id === id);
+            if (client && workflow) {
+              setActiveClient(client);
+              setActiveWorkflow(workflow);
+              setIsTesting(true);
             }
           }}
         />;
