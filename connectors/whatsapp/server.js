@@ -275,25 +275,139 @@ app.post('/api/poc/create-appointment', async (req, res) => {
 app.post('/api/generate', async (req, res) => {
   try {
     const body = req.body || {};
+    console.log('🤖 [AI Generate] Recebendo requisição:', { prompt: body.prompt?.substring(0, 50) + '...' });
+    
+    // Tentar obter a chave de API de diferentes fontes (header do frontend ou env)
+    const apiKey = req.headers['x-openai-key'] || process.env.OPENAI_API_KEY;
+    
     // If no OPENAI key, return mock steps
-    if (!process.env.OPENAI_API_KEY) {
-      return res.json({ steps: [ { id: 's1', type: 'ACTION', title: 'Mock Action', description: 'Generated mock', params: { inputs: [], outputs: [] }, nextSteps: [] } ] });
+    if (!apiKey) {
+      console.log('⚠️ OpenAI API Key não configurada. Retornando mock...');
+      return res.json({ steps: [ { id: 's1', type: 'ACTION', title: 'Mock Action', description: 'Configure a OpenAI API Key nas Configurações', params: { inputs: [], outputs: [] }, nextSteps: [] } ] });
     }
+    
+    console.log('🔑 Chave API encontrada, gerando workflow...');
+    
     // Otherwise attempt dynamic import and proxy (best-effort)
     try {
       const OpenAI = (await import('openai')).default;
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const client = new OpenAI({ apiKey });
       const prompt = body.prompt || '';
-      const response = await client.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] });
+      
+      // Prompt melhorado para garantir JSON válido
+      const systemPrompt = `Você é um assistente que gera workflows em formato JSON. 
+SEMPRE retorne um objeto JSON válido no formato: {"steps": [...]}
+Cada step deve ter: id, type (TRIGGER|ACTION|LOGIC|DATA), title, description, params {inputs: [], outputs: []}, nextSteps: []`;
+      
+      const response = await client.chat.completions.create({ 
+        model: 'gpt-4o-mini', 
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: "json_object" }
+      });
+      
       const content = response.choices?.[0]?.message?.content || '';
-      const match = content.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-      const parsed = match ? JSON.parse(match[0]) : { steps: [] };
-      return res.json(parsed);
+      console.log('✅ Resposta da OpenAI recebida:', content.substring(0, 200) + '...');
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+        
+        // Garantir que tem o campo steps
+        if (!parsed.steps) {
+          if (Array.isArray(parsed)) {
+            parsed = { steps: parsed };
+          } else {
+            parsed = { steps: [] };
+          }
+        }
+        
+        // Garantir que steps é um array
+        if (!Array.isArray(parsed.steps)) {
+          parsed.steps = [];
+        }
+        
+        console.log(`✅ JSON parseado com sucesso: ${parsed.steps.length} steps gerados`);
+        return res.json(parsed);
+        
+      } catch (parseError) {
+        console.error('❌ Erro ao parsear JSON:', parseError.message);
+        console.log('Conteúdo recebido:', content);
+        
+        // Tentar extrair array de steps do texto
+        const match = content.match(/\[[\s\S]*\]/);
+        if (match) {
+          const steps = JSON.parse(match[0]);
+          return res.json({ steps: Array.isArray(steps) ? steps : [steps] });
+        }
+        
+        return res.json({ 
+          steps: [ 
+            { 
+              id: 's1', 
+              type: 'ACTION', 
+              title: 'Workflow Gerado', 
+              description: content.substring(0, 200), 
+              params: { inputs: [], outputs: [] }, 
+              nextSteps: [] 
+            } 
+          ] 
+        });
+      }
+      
     } catch (e) {
-      console.warn('OpenAI dynamic call failed', e?.message || e);
-      return res.json({ steps: [ { id: 's1', type: 'ACTION', title: 'Mock Action', description: 'Generated mock (error)', params: { inputs: [], outputs: [] }, nextSteps: [] } ] });
+      console.error('❌ Erro na chamada OpenAI:', e?.message || e);
+      return res.json({ 
+        steps: [ 
+          { 
+            id: 's1', 
+            type: 'ACTION', 
+            title: 'Erro na API', 
+            description: `${e?.message || 'Verifique sua chave API'}`, 
+            params: { inputs: [], outputs: [] }, 
+            nextSteps: [] 
+          } 
+        ] 
+      });
     }
   } catch (err) {
+    console.error('❌ Erro geral:', err);
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// Simple simulator endpoint used by the frontend TestChat component
+app.post('/api/simulate', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const steps = Array.isArray(body.steps) ? body.steps : [];
+    const userMessage = body.userMessage || '';
+
+    // pick trigger step or first step
+    const step = steps.find(s => s.type === 'TRIGGER') || steps[0] || null;
+
+    if (!step) {
+      return res.json({ result: { stepId: null, userMessage: 'Nenhum passo definido para simulação' } });
+    }
+
+    // Basic simulation behaviour: if the step defines an actionName in params, return it
+    const params = step.params || {};
+    const actionName = params.actionName || params.api?.simulateAction || null;
+    const actionPayload = params.actionPayload || null;
+
+    const result = {
+      stepId: step.id || null,
+      userMessage: params.simulatedReply || step.title || `Resposta simulada para ${step.id || 'step'}`,
+      actionName,
+      actionPayload,
+      newVariables: params.simulatedOutputs || {}
+    };
+
+    return res.json({ result });
+  } catch (err) {
+    console.error('simulate error', err);
     return res.status(500).json({ error: String(err) });
   }
 });
@@ -302,12 +416,16 @@ app.post('/api/autoflow/llm', async (req, res) => {
   try {
     const { prompt, opts } = req.body || {};
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
-    if (!process.env.OPENAI_API_KEY) {
-      return res.json({ response: `[MOCK] ${String(prompt).slice(0, 200)}` });
+    
+    // Tentar obter a chave de API de diferentes fontes (header do frontend ou env)
+    const apiKey = req.headers['x-openai-key'] || process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      return res.json({ response: `[MOCK] Configure a OpenAI API Key nas Configurações` });
     }
     try {
       const OpenAI = (await import('openai')).default;
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const client = new OpenAI({ apiKey });
       const model = opts?.model || 'gpt-4o-mini';
       const response = await client.chat.completions.create({ model, messages: [ { role: 'user', content: prompt } ] });
       const content = response.choices?.[0]?.message?.content || '';
@@ -320,7 +438,48 @@ app.post('/api/autoflow/llm', async (req, res) => {
     return res.status(500).json({ error: String(err) });
   }
 });
-
+// Endpoint para testar conexão da API OpenAI
+app.post('/api/test-openai', async (req, res) => {
+  try {
+    const apiKey = req.headers['x-openai-key'] || process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'API Key não fornecida' 
+      });
+    }
+    
+    try {
+      const OpenAI = (await import('openai')).default;
+      const client = new OpenAI({ apiKey });
+      
+      // Fazer uma chamada simples para testar
+      const response = await client.chat.completions.create({ 
+        model: 'gpt-4o-mini', 
+        messages: [{ role: 'user', content: 'Test' }],
+        max_tokens: 5
+      });
+      
+      return res.json({ 
+        success: true, 
+        message: 'Conexão bem-sucedida com OpenAI',
+        model: response.model
+      });
+    } catch (e) {
+      console.error('Test OpenAI failed', e?.message || e);
+      return res.status(401).json({ 
+        success: false, 
+        error: e?.message || 'Chave inválida ou erro na API' 
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ 
+      success: false, 
+      error: String(err) 
+    });
+  }
+});
 // --- Admin endpoints (minimal implementation used by tests)
 function requireApiKey(req, res, next) {
   const key = req.headers['x-api-key'] || '';

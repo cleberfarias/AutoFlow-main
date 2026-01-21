@@ -599,7 +599,7 @@ const TestChat: React.FC<TestChatProps> = ({ steps, onClose, onStepActive, onApi
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Digite sua resposta..."
-              className="w-full pl-6 pr-14 py-4 bg-slate-100 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-[20px] outline-none text-sm font-medium transition-all"
+              className="w-full pl-6 pr-14 py-4 bg-slate-100 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-[20px] outline-none text-sm font-medium transition-all text-slate-800 placeholder:text-slate-400"
             />
             <button 
               onClick={() => handleSend()} 

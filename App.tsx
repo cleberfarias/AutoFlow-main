@@ -11,6 +11,7 @@ import NodeCard from './components/NodeCard';
 import EditorModal from './components/EditorModal';
 import TestChat from './components/TestChat';
 import NameModal from './components/NameModal';
+import ClientSelectorModal from './components/ClientSelectorModal';
 import LegendPanel from './components/LegendPanel';
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
@@ -65,6 +66,10 @@ const App: React.FC = () => {
     defaultValue: '',
     type: 'CLIENT'
   });
+
+  // Estado para modal de seleção de cliente
+  const [isClientSelectorOpen, setIsClientSelectorOpen] = useState(false);
+  const [isCreatingClientForWorkflow, setIsCreatingClientForWorkflow] = useState(false);
 
   // Estados do Editor
   const [promptValue, setPromptValue] = useState('');
@@ -405,13 +410,20 @@ const App: React.FC = () => {
         type
       });
     } else if (type === 'AUTOMATION') {
-      setNamingModal({
-        isOpen: true,
-        title: 'Nova Automação',
-        placeholder: 'Ex: Funil de WhatsApp, Cobrança...',
-        defaultValue: `Automação ${activeClient?.automations.length || 0 + 1}`,
-        type
-      });
+      // Se já tiver activeClient, abrir direto o modal de nome
+      // Se não tiver, abrir modal de seleção de cliente primeiro
+      if (activeClient) {
+        setNamingModal({
+          isOpen: true,
+          title: 'Nova Automação',
+          placeholder: 'Ex: Funil de WhatsApp, Cobrança...',
+          defaultValue: `Automação ${activeClient.automations.length + 1}`,
+          type: 'AUTOMATION',
+          clientId: activeClient.id
+        });
+      } else {
+        setIsClientSelectorOpen(true);
+      }
     } else if (type === 'RENAME_AUTOMATION') {
       setNamingModal({
         isOpen: true,
@@ -422,6 +434,33 @@ const App: React.FC = () => {
         id
       });
     }
+  };
+
+  const handleClientSelected = (client: Client) => {
+    // Cliente selecionado, fechar seletor e abrir modal de nomeação de workflow
+    setIsClientSelectorOpen(false);
+    setActiveClient(client);
+    setNamingModal({
+      isOpen: true,
+      title: 'Nova Automação',
+      placeholder: 'Ex: Funil de WhatsApp, Cobrança...',
+      defaultValue: `Automação ${client.automations.length + 1}`,
+      type: 'AUTOMATION',
+      clientId: client.id
+    });
+  };
+
+  const handleCreateNewClientFromSelector = () => {
+    // Fechar seletor e abrir modal de criação de cliente
+    setIsClientSelectorOpen(false);
+    setIsCreatingClientForWorkflow(true); // Marcar que estamos criando cliente para workflow
+    setNamingModal({
+      isOpen: true,
+      title: 'Novo Cliente',
+      placeholder: 'Nome da empresa ou cliente...',
+      defaultValue: '',
+      type: 'CLIENT'
+    });
   };
 
   const handleConfirmNaming = (name: string) => {
@@ -437,6 +476,21 @@ const App: React.FC = () => {
       const updated = [...clients, newClient];
       saveToDB(updated);
       setActiveClient(newClient);
+      
+      // Se estava criando cliente via seletor para criar workflow, abrir modal de workflow agora
+      if (isCreatingClientForWorkflow) {
+        setIsCreatingClientForWorkflow(false);
+        setTimeout(() => {
+          setNamingModal({
+            isOpen: true,
+            title: 'Nova Automação',
+            placeholder: 'Ex: Funil de WhatsApp, Cobrança...',
+            defaultValue: 'Automação 1',
+            type: 'AUTOMATION',
+            clientId: newClient.id
+          });
+        }, 100);
+      }
     } 
     else if (type === 'AUTOMATION') {
       // Se tiver clientId, usa ele; senão usa activeClient; senão cria um cliente padrão
@@ -705,7 +759,12 @@ const App: React.FC = () => {
 
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard clients={clients} workflows={allWorkflows} onCreateWorkflow={() => handleOpenNamingModal('AUTOMATION')} />;
+        return <Dashboard 
+          clients={clients} 
+          workflows={allWorkflows} 
+          onCreateWorkflow={() => handleOpenNamingModal('AUTOMATION')}
+          onCreateClient={() => handleOpenNamingModal('CLIENT')}
+        />;
       case 'workflows':
         return <WorkflowsPage 
           clients={clients}
@@ -732,6 +791,12 @@ const App: React.FC = () => {
               setActiveClient(client);
               setActiveWorkflow(workflow);
               setIsTesting(true);
+            }
+          }}
+          onCreateClientWorkflow={(clientId) => {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+              handleClientSelected(client);
             }
           }}
         />;
@@ -763,6 +828,13 @@ const App: React.FC = () => {
           {renderPageContent()}
         </div>
         <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
+        <ClientSelectorModal 
+          isOpen={isClientSelectorOpen}
+          clients={clients}
+          onClose={() => setIsClientSelectorOpen(false)}
+          onSelectClient={handleClientSelected}
+          onCreateNewClient={handleCreateNewClientFromSelector}
+        />
       </div>
     );
   }
@@ -1337,6 +1409,13 @@ const App: React.FC = () => {
       )}
       
       <NameModal {...namingModal} onClose={() => setNamingModal(p => ({...p, isOpen: false}))} onConfirm={handleConfirmNaming} />
+      <ClientSelectorModal 
+        isOpen={isClientSelectorOpen}
+        clients={clients}
+        onClose={() => setIsClientSelectorOpen(false)}
+        onSelectClient={handleClientSelected}
+        onCreateNewClient={handleCreateNewClientFromSelector}
+      />
       {isTesting && <TestChat steps={activeWorkflow.steps} onClose={() => setIsTesting(false)} onStepActive={setActiveStepId} onApiError={incrementApiErrors} />}
       {editingStepId && <EditorModal step={activeWorkflow.steps.find(s => s.id === editingStepId)!} onClose={() => setEditingStepId(null)} onSave={(updated) => { saveCurrentWorkflow(activeWorkflow.steps.map(x => x.id === updated.id ? updated : x)); setEditingStepId(null); }} />}
     </div>

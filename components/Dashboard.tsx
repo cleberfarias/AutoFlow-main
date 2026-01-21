@@ -5,6 +5,7 @@ interface DashboardProps {
   clients: any[];
   workflows: any[];
   onCreateWorkflow?: () => void;
+  onCreateClient?: () => void;
 }
 
 // Função para calcular dias desde criação
@@ -60,7 +61,7 @@ function calculateStats(workflows: any[]) {
   };
 }
 
-export default function Dashboard({ clients, workflows, onCreateWorkflow }: DashboardProps) {
+export default function Dashboard({ clients, workflows, onCreateWorkflow, onCreateClient }: DashboardProps) {
   const [stats, setStats] = useState({
     totalWorkflows: 0,
     totalSteps: 0,
@@ -84,12 +85,20 @@ export default function Dashboard({ clients, workflows, onCreateWorkflow }: Dash
           <h1 className="text-4xl font-bold text-white mb-2">Dashboard</h1>
           <p className="text-slate-400">Gerencie seus workflows e integrações</p>
         </div>
-        <button
-          onClick={onCreateWorkflow}
-          className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all font-semibold shadow-lg shadow-teal-600/30"
-        >
-          <Plus size={20} /> Novo Workflow
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onCreateClient}
+            className="flex items-center gap-2 px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-all font-semibold border border-slate-600"
+          >
+            <Plus size={20} /> Novo Cliente
+          </button>
+          <button
+            onClick={onCreateWorkflow}
+            className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all font-semibold shadow-lg shadow-teal-600/30"
+          >
+            <Plus size={20} /> Novo Workflow
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}

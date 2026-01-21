@@ -8,6 +8,7 @@ interface WorkflowsPageProps {
   onCreateWorkflow?: () => void;
   onDeleteWorkflow?: (id: string) => void;
   onExecuteWorkflow?: (id: string) => void;
+  onCreateClientWorkflow?: (clientId: string) => void;
 }
 
 export default function WorkflowsPage({
@@ -17,6 +18,7 @@ export default function WorkflowsPage({
   onCreateWorkflow,
   onDeleteWorkflow,
   onExecuteWorkflow,
+  onCreateClientWorkflow,
 }: WorkflowsPageProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -107,6 +109,23 @@ export default function WorkflowsPage({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCreateClientWorkflow?.(client.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        onCreateClientWorkflow?.(client.id);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all font-semibold shadow-lg shadow-teal-600/30 text-sm cursor-pointer"
+                  >
+                    <Plus size={16} /> Novo Workflow
+                  </div>
                   <span className="text-sm font-semibold text-slate-400">
                     {expandedClients.has(client.id) ? 'Ocultar' : 'Mostrar'}
                   </span>

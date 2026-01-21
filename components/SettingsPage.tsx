@@ -13,6 +13,8 @@ export default function SettingsPage() {
   const [showApiKeys, setShowApiKeys] = useState({ openai: false, gemini: false });
   const [tempApiKeys, setTempApiKeys] = useState({ openai: '', gemini: '' });
   const [saved, setSaved] = useState(false);
+  const [testingApi, setTestingApi] = useState({ openai: false, gemini: false });
+  const [testResults, setTestResults] = useState({ openai: '', gemini: '' });
 
   useEffect(() => {
     const unsubscribe = settingsManager.subscribe((updatedSettings) => {
@@ -75,7 +77,48 @@ export default function SettingsPage() {
   const handleRemoveApiKey = (service: 'openai' | 'gemini') => {
     if (confirm(`Remover chave de API ${service}?`)) {
       settingsManager.removeApiKey(service);
+      setTestResults({ ...testResults, [service]: '' });
       showSavedMessage();
+    }
+  };
+
+  const handleTestApiKey = async (service: 'openai' | 'gemini') => {
+    if (service !== 'openai') {
+      alert('Teste disponível apenas para OpenAI no momento');
+      return;
+    }
+
+    setTestingApi({ ...testingApi, [service]: true });
+    setTestResults({ ...testResults, [service]: '' });
+
+    try {
+      const apiKey = settingsManager.getSettings().api.openaiKey;
+      
+      if (!apiKey) {
+        setTestResults({ ...testResults, [service]: '❌ Nenhuma chave configurada' });
+        setTestingApi({ ...testingApi, [service]: false });
+        return;
+      }
+
+      const response = await fetch('/api/test-openai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-OpenAI-Key': apiKey
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setTestResults({ ...testResults, [service]: `✅ ${data.message}` });
+      } else {
+        setTestResults({ ...testResults, [service]: `❌ ${data.error}` });
+      }
+    } catch (error: any) {
+      setTestResults({ ...testResults, [service]: `❌ Erro: ${error.message}` });
+    } finally {
+      setTestingApi({ ...testingApi, [service]: false });
     }
   };
 
@@ -394,14 +437,33 @@ export default function SettingsPage() {
                           <Save size={20} />
                         </button>
                         {settingsManager.hasApiKey('openai') && (
-                          <button
-                            onClick={() => handleRemoveApiKey('openai')}
-                            className="px-6 py-3 bg-rose-500 hover:bg-rose-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors"
-                          >
-                            <Trash2 size={20} />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleTestApiKey('openai')}
+                              disabled={testingApi.openai}
+                              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Testar conexão"
+                            >
+                              {testingApi.openai ? '⏳' : '🧪'}
+                            </button>
+                            <button
+                              onClick={() => handleRemoveApiKey('openai')}
+                              className="px-6 py-3 bg-rose-500 hover:bg-rose-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          </>
                         )}
                       </div>
+                      {testResults.openai && (
+                        <div className={`mt-3 p-3 rounded-lg text-sm ${
+                          testResults.openai.startsWith('✅') 
+                            ? 'bg-emerald-500/20 text-emerald-300' 
+                            : 'bg-rose-500/20 text-rose-300'
+                        }`}>
+                          {testResults.openai}
+                        </div>
+                      )}
                     </div>
 
                     {/* Gemini */}
